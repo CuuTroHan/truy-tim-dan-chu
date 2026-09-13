@@ -1,0 +1,344 @@
+@page "/"
+@using TruyTimDanChu.Game
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>Truy tìm Dân chủ — Bốn mảnh của Tiếng Nói</PageTitle>
+
+<main class="game-shell @(_reducedMotion ? "reduced-motion" : "")" style="--text-scale:@TextFactor()">
+    <canvas @ref="_canvas" width="320" height="180" aria-label="Bản đồ thị trấn Minh Đăng"></canvas>
+    <div class="world-vignette" aria-hidden="true"></div>
+
+    @if (_started)
+    {
+        <header class="hud-top">
+            <div class="brand-mark"><b>✦</b><span>TRUY TÌM<br><strong>DÂN CHỦ</strong></span></div>
+            <nav class="hud-actions" aria-label="Điều khiển">
+                <button title="Sổ Tiếng Nói" @onclick="ToggleJournal">▤</button>
+                <button title="Gợi ý (H)" @onclick="ShowHint">?</button>
+                <button title="Tạm dừng (Esc)" @onclick="TogglePause">Ⅱ</button>
+            </nav>
+        </header>
+        <aside class="quest-card">
+            <div class="eyebrow">✦ HÀNH TRÌNH <span>@_game.Shards / 4 MẢNH</span></div>
+            <h2>@ChapterTitle()</h2>
+            <p>@_game.Objective</p>
+            <div class="shard-track" aria-label="@($"{_game.Shards} trên 4 mảnh đã tìm thấy")">
+                @for (var i = 0; i < 4; i++) { <span class="@(i < _game.Shards ? "found" : "")">@(i < _game.Shards ? "✦" : "·")</span> }
+            </div>
+        </aside>
+        <div class="area-chip">⌖ @_game.Area</div>
+        <div class="bottom-help"><kbd>WASD</kbd> Di chuyển <i>·</i> <kbd>E</kbd> Tương tác <i>·</i> <kbd>H</kbd> Gợi ý</div>
+        @if (_journalOpen)
+        {
+            <aside class="journal" aria-label="Sổ Tiếng Nói">
+                <div class="journal-head"><strong>✦ SỔ TIẾNG NÓI</strong><button @onclick="ToggleJournal" aria-label="Đóng sổ">×</button></div>
+                <p>Theo dõi đường đi của một tiếng nói.</p>
+                <ol>
+                    <li class="@(_game.Shards >= 1 ? "complete" : "")"><b>01</b><span><strong>Chủ thể quyền lực</strong><small>Người dân là điểm khởi đầu.</small></span></li>
+                    <li class="@(_game.Shards >= 2 ? "complete" : "")"><b>02</b><span><strong>Cơ chế tham gia</strong><small>Ý kiến cần có đường đi.</small></span></li>
+                    <li class="@(_game.Shards >= 3 ? "complete" : "")"><b>03</b><span><strong>Phản hồi và kết quả</strong><small>Được biết, được nói, được giải thích.</small></span></li>
+                    <li class="@(_game.Shards >= 4 ? "complete" : "")"><b>04</b><span><strong>Giám sát và phản ánh</strong><small>Thông tin cần được xác minh.</small></span></li>
+                </ol>
+                <footer>Đã đọc @_game.Lore.Count(x => x) / 4 bảng trong thư viện</footer>
+            </aside>
+        }
+        @if (!string.IsNullOrEmpty(_game.Toast) && _game.Panel == Panel.None)
+        { <div class="toast" role="status">@_game.Toast</div> }
+    }
+
+    @if (!_started)
+    {
+        <section class="title-screen">
+            <div class="title-ornament">✦ ───────── ✦</div>
+            <div class="title-kicker">MỘT CHUYẾN PHIÊU LƯU 2D TẠI THỊ TRẤN MINH ĐĂNG</div>
+            <h1>TRUY TÌM<br><em>DÂN CHỦ</em></h1>
+            <p>Bốn mảnh của Tiếng Nói</p>
+            <div class="title-buttons">
+                <button class="primary-button" @onclick="NewGame">BẮT ĐẦU HÀNH TRÌNH <span>→</span></button>
+                @if (_hasSave) { <button class="secondary-button" @onclick="ContinueGame">TIẾP TỤC LƯỢT TRƯỚC</button> }
+            </div>
+            <div class="title-note">Di chuyển bằng WASD hoặc phím mũi tên · Nhấn E để tương tác · Khoảng 10–15 phút</div>
+        </section>
+    }
+    else if (_game.Panel == Panel.Dialogue && _game.CurrentLine is not null)
+    {
+        <div class="dialogue-wrap">
+            <div class="dialogue-card">
+                <div class="portrait @PortraitClass(_game.CurrentLine.Speaker)" aria-hidden="true"><span></span></div>
+                <div class="dialogue-content">
+                    <div class="dialogue-speaker">@_game.CurrentLine.Speaker <small>@(_game.DialogueIndex + 1) / @_game.Dialogue.Count</small></div>
+                    <p>@_shownLine</p>
+                    <button class="continue-button" @onclick="NextDialogue">@(_lineComplete ? "TIẾP TỤC" : "HIỆN HẾT") ↵</button>
+                </div>
+            </div>
+        </div>
+    }
+    else if (_game.Panel != Panel.None)
+    {
+        <div class="modal-backdrop">
+            <section class="game-modal @(_game.Panel == Panel.Sources ? "ending-modal" : "")" aria-label="Câu đố hoặc menu">
+                <button class="modal-close" @onclick="ClosePanel" aria-label="Đóng">×</button>
+                @switch (_game.Panel)
+                {
+                    case Panel.Mirrors:
+                        <div class="modal-kicker">MẢNH 01 · CHỦ THỂ QUYỀN LỰC</div>
+                        <h2>Hướng ánh sáng về tâm</h2>
+                        <p class="modal-lead">Xoay bốn gương để ánh sáng của mọi người cùng gặp nhau.</p>
+                        <div class="mirror-grid">
+                            @for (var i = 0; i < 4; i++)
+                            {
+                                var index = i;
+                                var location = i switch { 0 => "TÂY", 1 => "BẮC", 2 => "ĐÔNG", _ => "NAM" };
+                                <button @onclick="() => TurnMirror(index)"><small>GƯƠNG PHÍA @location</small><b>@Direction(_game.Mirrors[i])</b><small>Hướng về tâm</small></button>
+                            }
+                        </div>
+                        <div class="modal-footer"><span>@_game.Toast</span><button class="primary-button small" @onclick="CheckMirrors">THỬ ÁNH SÁNG →</button></div>
+                        break;
+                    case Panel.Draft:
+                        <div class="modal-kicker">MẢNH 02 · CƠ CHẾ THAM GIA</div>
+                        <h2>Đường đi của một ý kiến</h2>
+                        <p class="modal-lead">Sắp xếp các bước từ lúc dự thảo được công khai tới khi có quyết định.</p>
+                        <div class="draft-list">
+                            @for (var i = 0; i < _game.DraftLabels.Count; i++)
+                            {
+                                var index = i;
+                                <div><b>@(i + 1)</b><span>@_game.DraftLabels[i]</span><button @onclick="() => MoveDraft(index, -1)" disabled="@(i == 0)" aria-label="@($"Đưa {_game.DraftLabels[i]} lên")">↑</button><button @onclick="() => MoveDraft(index, 1)" disabled="@(i == 5)" aria-label="@($"Đưa {_game.DraftLabels[i]} xuống")">↓</button></div>
+                            }
+                        </div>
+                        <div class="modal-footer"><span>@_game.Toast</span><button class="primary-button small" @onclick="CheckDraft">VẬN HÀNH CỖ MÁY →</button></div>
+                        break;
+                    case Panel.River:
+                        <div class="modal-kicker">MẢNH 03 · PHẢN HỒI VÀ KẾT QUẢ</div>
+                        <h2>Để dòng ý kiến đi đủ đường</h2>
+                        <p class="modal-lead">Dòng sáng đi từ trạm 1 sang trạm 2 ở bên phải, xuống trạm 3, sang trái tới trạm 4 rồi quay lên. Hãy xoay biển theo đường đi đó.</p>
+                        <div class="river-route">
+                            @for (var i = 0; i < 4; i++)
+                            {
+                                var index = i;
+                                var title = i switch { 0 => "CÔNG KHAI", 1 => "HỌP DÂN", 2 => "GHI NHẬN", _ => "ĐỐI THOẠI" };
+                                <button @onclick="() => TurnRiver(index)"><small>0@(i + 1)</small><strong>@title</strong><b>@Direction(_game.RiverSigns[i])</b></button>
+                            }
+                        </div>
+                        <div class="modal-footer"><span>@_game.Toast</span><button class="primary-button small" @onclick="CheckRiver">CHO DÒNG Ý KIẾN CHẠY →</button></div>
+                        break;
+                    case Panel.News:
+                        <div class="modal-kicker">MẢNH 04 · GIÁM SÁT VÀ PHẢN ÁNH</div>
+                        <h2>Một tin đang lan trên phố</h2>
+                        <p class="modal-lead">Có phản ánh về việc thu tiền phạt qua tài khoản cá nhân. Quang cần quyết định bước tiếp theo.</p>
+                        <div class="evidence-list">
+                            @for (var i = 0; i < 3; i++) { <div class="@(_game.Clues[i] ? "found" : "")"><b>@(_game.Clues[i] ? "✓" : "?")</b>@_game.ClueLabels[i]</div> }
+                        </div>
+                        @if (_game.NewsNoise > 0) { <p class="noise-warning">⚠ Nhiễu thông tin: @_game.NewsNoise / 3 · Có thể xem lại quyết định</p> }
+                        <div class="choice-list">
+                            <button @onclick="() => ChooseNews(0)"><b>01</b> Chia sẻ ngay để gây áp lực <span>↗</span></button>
+                            <button @onclick="() => ChooseNews(1)"><b>02</b> Bỏ qua hoàn toàn <span>↗</span></button>
+                            <button @onclick="() => ChooseNews(2)"><b>03</b> Gom chứng cứ, gửi phản ánh để xác minh <span>↗</span></button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_game.Toast)) { <p class="modal-feedback">@_game.Toast</p> }
+                        break;
+                    case Panel.Finale:
+                        <div class="modal-kicker">HÒM DÂN CHỦ · BỐN MẢNH</div>
+                        @if (_game.FinaleSequence.Contains(4))
+                        {
+                            <h2>Câu trả lời phải quay về</h2>
+                            <p class="modal-lead">Bốn mảnh đều sáng nhưng hòm vẫn chưa mở. Nam mang lá thư đi qua bốn chặng cuối.</p>
+                            <div class="return-route">
+                                @for (var i = 0; i < 4; i++)
+                                {
+                                    var step = i;
+                                    var title = i switch { 0 => "TIẾP NHẬN", 1 => "GIẢI TRÌNH", 2 => "ĐIỀU CHỈNH", _ => "TRẢ KẾT QUẢ" };
+                                    <button class="@(_game.ReturnStep > i ? "done" : "")" disabled="@(i != _game.ReturnStep)" @onclick="() => AdvanceReturnStep(step)">@(i + 1). @title</button>
+                                    @if (i < 3) { <i>→</i> }
+                                }
+                            </div>
+                            <p class="modal-feedback">@(_game.Toast ?? "Nhấn vào chặng đang sáng để Nam đưa lá thư đi tiếp.")</p>
+                        }
+                        else
+                        {
+                            <h2>Khép vòng Tiếng Nói</h2>
+                            <p class="modal-lead">Chọn bốn mảnh theo hành trình từ người dân tới kết quả được phản hồi.</p>
+                            <div class="final-slots">
+                                @for (var i = 0; i < 4; i++) { <div class="@(_game.FinaleSequence.Count > i ? "filled" : "")">@(_game.FinaleSequence.Count > i ? _game.FinalLabels[_game.FinaleSequence[i]] : "0" + (i + 1) + " · CHƯA ĐẶT")</div> }
+                            </div>
+                            <div class="final-pieces">
+                                @for (var i = 0; i < 4; i++) { var index = i; <button disabled="@_game.FinaleSequence.Contains(index)" @onclick="() => AddFinalePiece(index)">@_game.FinalLabels[i]</button> }
+                            </div>
+                            @if (!string.IsNullOrEmpty(_game.Toast)) { <p class="modal-feedback">@_game.Toast</p> }
+                        }
+                        break;
+                    case Panel.Pause:
+                        <div class="modal-kicker">TẠM DỪNG</div><h2>Quang đang nghỉ một chút</h2>
+                        <p class="modal-lead">Tiến độ được lưu sau mỗi mảnh. Bạn có thể tiếp tục ngay tại đây.</p>
+                        <div class="menu-buttons"><button class="primary-button" @onclick="ClosePanel">TIẾP TỤC →</button><button class="secondary-button" @onclick="() => OpenPanel(Panel.Settings)">CÀI ĐẶT</button><button class="secondary-button" @onclick="() => OpenPanel(Panel.Sources)">NGUỒN VÀ NỘI DUNG</button><button class="secondary-button" @onclick="ReturnTitle">VỀ MÀN HÌNH ĐẦU</button></div>
+                        break;
+                    case Panel.Settings:
+                        <div class="modal-kicker">CÀI ĐẶT</div><h2>Chơi theo cách của bạn</h2>
+                        <div class="setting-row"><span>Hiệu ứng hiện từng chữ</span><button @onclick="ToggleTypewriter">@(_typewriter ? "BẬT" : "TẮT")</button></div>
+                        <div class="setting-row"><span>Chuyển động nhẹ</span><button @onclick="ToggleReducedMotion">@(_reducedMotion ? "BẬT" : "TẮT")</button></div>
+                        <div class="setting-row"><span>Âm thanh</span><button @onclick="ToggleMute">@(_game.Muted ? "TẮT" : "BẬT")</button></div>
+                        <div class="setting-row"><span>Cỡ chữ</span><div><button @onclick="() => SetScale(100)">100%</button><button @onclick="() => SetScale(125)">125%</button><button @onclick="() => SetScale(150)">150%</button></div></div>
+                        <button class="primary-button wide" @onclick="() => OpenPanel(Panel.Pause)">XONG →</button>
+                        break;
+                    case Panel.Sources:
+                        @if (_game.Chapter == Chapter.Complete) { <div class="ending-emblem">✦</div><div class="modal-kicker">HÀNH TRÌNH HOÀN THÀNH</div><h2>Bạn đã tìm thấy điều cần tìm</h2><p class="ending-quote">“Dân chủ thực chất không nằm ở việc một quốc gia giống mô hình nào, mà nằm ở việc tiếng nói của người dân có được lắng nghe, phản hồi và chuyển hóa thành hành động hay không.”</p> }
+                        else { <div class="modal-kicker">TÌM HIỂU THÊM</div><h2>Nguồn và nội dung</h2> }
+                        <p class="modal-lead">Game lấy cảm hứng từ dàn ý thuyết trình Chủ đề 3. Nhân vật và thị trấn đều hư cấu.</p>
+                        <ul class="source-list"><li>Hiến pháp năm 2013: Điều 2, Điều 6 và Điều 28.</li><li>Quy trình góp ý sửa đổi Hiến pháp năm 2025 và Luật Đất đai 2024 được trình bày trong tài liệu của nhóm.</li><li>Giám sát qua mạng xã hội cần đi cùng tiếp nhận, xác minh và xử lý theo quy định.</li></ul>
+                        <div class="ending-actions"><button class="primary-button" @onclick="ReturnTitle">VỀ MÀN HÌNH ĐẦU →</button><button class="secondary-button" @onclick="ClosePanel">QUAY LẠI BẢN ĐỒ</button></div>
+                        break;
+                    case Panel.Presenter:
+                        <div class="modal-kicker">CHẾ ĐỘ TRÌNH CHIẾU</div><h2>Chọn điểm bắt đầu</h2>
+                        <p class="modal-lead">Dùng khi diễn tập hoặc cần bỏ qua một đoạn. Không ghi đè bản lưu chính.</p>
+                        <div class="presenter-grid">
+                            @foreach (var chapter in new[] { Chapter.Lights, Chapter.Draft, Chapter.River, Chapter.News, Chapter.Finale }) { var selected = chapter; <button @onclick="() => PresenterJump(selected)">@PresenterTitle(selected)</button> }
+                        </div>
+                        break;
+                }
+            </section>
+        </div>
+    }
+</main>
+
+@code {
+    private GameEngine _game = new();
+    private ElementReference _canvas;
+    private DotNetObjectReference<Home>? _self;
+    private IJSObjectReference? _module;
+    private bool _started, _hasSave, _journalOpen, _typewriter = true, _reducedMotion;
+    private string _shownLine = "";
+    private string? _lineKey;
+    private bool _lineComplete = true;
+    private CancellationTokenSource? _typing;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/game.js");
+        var saved = await _module.InvokeAsync<string?>("getSave");
+        _hasSave = saved is not null;
+        if (_hasSave) _game.Load(saved);
+        _self = DotNetObjectReference.Create(this);
+        await _module.InvokeVoidAsync("start", _self, _canvas);
+        if (Navigation.Uri.Contains("presenter=1", StringComparison.OrdinalIgnoreCase)) { _started = true; _game.OpenPanel(Panel.Presenter); }
+        StateHasChanged();
+    }
+    private async Task NewGame()
+    {
+        if (_module is not null) await _module.InvokeVoidAsync("clearSave");
+        _typing?.Cancel(); _lineKey = null; _shownLine = "";
+        _game = new GameEngine();
+        _started = true; _hasSave = false;
+        _game.Begin(); Sfx("start"); RefreshUi();
+    }
+    private void ContinueGame() { _started = true; _game.StartFromSave(); RefreshUi(); }
+    private async Task ReturnTitle()
+    {
+        _started = false; _journalOpen = false; _typing?.Cancel(); _lineKey = null;
+        var saved = _module is null ? null : await _module.InvokeAsync<string?>("getSave");
+        _hasSave = saved is not null;
+        _game = new GameEngine();
+        if (_hasSave) _game.Load(saved);
+        RefreshUi();
+    }
+    private string ChapterTitle() => _game.Chapter switch { Chapter.Lights => "Bốn ngọn đèn", Chapter.Draft => "Đường đi của ý kiến", Chapter.River => "Cuộc họp ven sông", Chapter.News => "Tin trên quảng trường", Chapter.Finale => "Khép vòng Tiếng Nói", Chapter.Complete => "Hành trình hoàn thành", _ => "Bắt đầu hành trình" };
+    private static string PresenterTitle(Chapter chapter) => chapter switch { Chapter.Lights => "Ánh sáng", Chapter.Draft => "Xưởng dự thảo", Chapter.River => "Ven sông", Chapter.News => "Phố tin tức", _ => "Đoạn kết" };
+    private string TextFactor() => _game.TextScale switch { 100 => "1", 150 => "1.5", _ => "1.25" };
+    private static string Direction(int value) => value switch { 0 => "↑", 1 => "→", 2 => "↓", _ => "←" };
+    private static string PortraitClass(string speaker) => speaker switch { "Kiều Anh" => "kieu-anh", "Trọng" => "trong", "Phương" => "phuong", "Dũng" => "dung", "Bảo" => "bao", "Ninh" => "ninh", "Hán" => "han", "Nam" => "nam", _ => "quang" };
+
+    [JSInvokable]
+    public Frame Tick(double timestamp, int keys)
+    {
+        var frame = _game.Tick(timestamp, _started ? keys : 0);
+        if (frame.UiDirty) _ = InvokeAsync(RefreshUi);
+        return frame;
+    }
+    [JSInvokable]
+    public void PauseClock()
+    {
+        _game.PauseClock();
+        if (_started && _game.Panel == Panel.None)
+        {
+            _game.OpenPanel(Panel.Pause);
+            _ = InvokeAsync(RefreshUi);
+        }
+    }
+    [JSInvokable]
+    public void KeyAction(string code)
+    {
+        if (!_started && code != "Presenter") return;
+        _ = InvokeAsync(async () =>
+        {
+            if (code == "Presenter") { _started = true; _game.OpenPanel(Panel.Presenter); RefreshUi(); return; }
+            if (code == "KeyM") { ToggleMute(); return; }
+            if (_game.Panel == Panel.Dialogue) { if (code is "KeyE" or "Space" or "Enter") await NextDialogue(); return; }
+            if (code == "Escape") { if (_game.Panel == Panel.None) _game.OpenPanel(Panel.Pause); else _game.ClosePanel(); }
+            else if (_game.Panel == Panel.None) { if (code is "KeyE" or "Space" or "Enter") _game.Interact(); else if (code == "KeyH") ShowHint(); }
+            RefreshUi();
+        });
+    }
+    private void RefreshUi()
+    {
+        var line = _game.CurrentLine;
+        var key = _game.Panel == Panel.Dialogue && line is not null ? $"{_game.DialogueIndex}:{line.Speaker}:{line.Text}" : null;
+        if (key != _lineKey)
+        {
+            _typing?.Cancel(); _lineKey = key;
+            if (line is not null && _game.Panel == Panel.Dialogue)
+            {
+                if (_typewriter) { _shownLine = ""; _lineComplete = false; _ = TypeLine(line.Text); }
+                else { _shownLine = line.Text; _lineComplete = true; }
+            }
+            else { _shownLine = ""; _lineComplete = true; }
+        }
+        StateHasChanged();
+    }
+    private async Task TypeLine(string value)
+    {
+        _typing = new CancellationTokenSource(); var token = _typing.Token;
+        try
+        {
+            for (var i = 1; i <= value.Length; i++)
+            {
+                await Task.Delay(28, token); _shownLine = value[..i];
+                if (i % 2 == 0 || i == value.Length) await InvokeAsync(StateHasChanged);
+            }
+            _lineComplete = true; await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { }
+    }
+    private async Task NextDialogue()
+    {
+        if (!_lineComplete) { _typing?.Cancel(); _shownLine = _game.CurrentLine?.Text ?? ""; _lineComplete = true; }
+        else _game.AdvanceDialogue();
+        RefreshUi(); await Task.CompletedTask;
+    }
+    private void ToggleJournal() { _journalOpen = !_journalOpen; RefreshUi(); }
+    private void ShowHint() { if (_game.Hint is not null) { _game.ShowDialogue([new("Gợi ý", _game.Hint)]); RefreshUi(); } }
+    private void TogglePause() { if (_game.Panel == Panel.None) _game.OpenPanel(Panel.Pause); else _game.ClosePanel(); RefreshUi(); }
+    private void ClosePanel() { _game.ClosePanel(); RefreshUi(); }
+    private void OpenPanel(Panel panel) { _game.OpenPanel(panel); RefreshUi(); }
+    private void TurnMirror(int i) { _game.TurnMirror(i); Sfx("click"); RefreshUi(); }
+    private void CheckMirrors() { _game.CheckMirrors(); Sfx(_game.Panel == Panel.Dialogue ? "success" : "wrong"); RefreshUi(); }
+    private void MoveDraft(int i, int d) { _game.MoveDraft(i, d); RefreshUi(); }
+    private void CheckDraft() { _game.CheckDraft(); Sfx(_game.Panel == Panel.Dialogue ? "success" : "wrong"); RefreshUi(); }
+    private void TurnRiver(int i) { _game.TurnRiver(i); Sfx("click"); RefreshUi(); }
+    private void CheckRiver() { _game.CheckRiver(); Sfx(_game.Panel == Panel.Dialogue ? "success" : "wrong"); RefreshUi(); }
+    private void ChooseNews(int choice) { _game.ChooseNews(choice); Sfx(_game.Panel == Panel.Dialogue ? "success" : "click"); RefreshUi(); }
+    private void AddFinalePiece(int piece) { _game.AddFinalePiece(piece); RefreshUi(); }
+    private void AdvanceReturnStep(int step) { _game.AdvanceReturnStep(step); Sfx("click"); RefreshUi(); }
+    private void PresenterJump(Chapter chapter) { _game.PresenterJump(chapter); _started = true; RefreshUi(); }
+    private void ToggleTypewriter() { _typewriter = !_typewriter; RefreshUi(); }
+    private void ToggleReducedMotion() { _reducedMotion = !_reducedMotion; if (_module is not null) _ = _module.InvokeVoidAsync("setReducedMotion", _reducedMotion); RefreshUi(); }
+    private void ToggleMute() { _game.SetMuted(!_game.Muted); Sfx("click"); RefreshUi(); }
+    private void SetScale(int scale) { _game.SetTextScale(scale); RefreshUi(); }
+    private void Sfx(string kind) { if (_module is not null) _ = _module.InvokeVoidAsync("playSound", kind, _game.Muted); }
+    public async ValueTask DisposeAsync()
+    {
+        _typing?.Cancel();
+        if (_module is not null) { await _module.InvokeVoidAsync("stop"); await _module.DisposeAsync(); }
+        _self?.Dispose();
+    }
+}

@@ -1,0 +1,15 @@
+# Generated .NET output
+bin/
+obj/
+dist/
+**/bin/
+**/obj/
+
+# Local editor and OS files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
