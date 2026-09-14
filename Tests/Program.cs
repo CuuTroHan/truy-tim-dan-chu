@@ -15,8 +15,14 @@ game.Begin();
 Require(game.Panel == Panel.Dialogue, "Mở đầu cần hội thoại.");
 FinishDialogue(game);
 Require(game.Chapter == Chapter.Lights, "Hội thoại mở đầu phải vào nhiệm vụ ánh sáng.");
+Require(game.NextTarget == "Phương", "Mục tiêu đầu tiên phải chỉ rõ Phương.");
+game.Spoken[0] = true;
+Require(game.NextTarget == "Dũng", "Mục tiêu phải chuyển lần lượt sang Dũng.");
 
-for (var i = 0; i < 4; i++) { game.Spoken[i] = true; game.Lamps[i] = true; }
+for (var i = 0; i < 4; i++) game.Spoken[i] = true;
+Require(game.NextTarget == "Bệ đèn của Phương", "Sau hội thoại phải chỉ rõ bệ đèn đầu tiên.");
+for (var i = 0; i < 4; i++) game.Lamps[i] = true;
+Require(game.NextTarget == "Gương trung tâm", "Sau khi đặt đèn phải chỉ gương trung tâm.");
 game.OpenPanel(Panel.Mirrors);
 for (var i = 0; i < 4; i++)
     for (var turn = 0; turn < new[] { 1, 2, 3, 0 }[i]; turn++) game.TurnMirror(i);

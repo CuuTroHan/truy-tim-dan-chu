@@ -1,6 +1,6 @@
-const W = 1024, H = 640, VIEW_W = 320, VIEW_H = 180;
+const W = 1024, H = 640, VIEW_W = 480, VIEW_H = 270;
 const input = { up: false, down: false, left: false, right: false };
-let running = false, raf = 0, busy = false, frame = null, ctx = null, world = null, dotnet = null;
+let running = false, raf = 0, busy = false, frame = null, ctx = null, world = null, dotnet = null, spriteAtlas = null;
 let walkTime = 0, lastDraw = 0, focus = true;
 let audioContext = null;
 let reducedMotion = false;
@@ -43,6 +43,8 @@ export function start(ref, canvas) {
   dotnet = ref;
   ctx = canvas.getContext("2d", { alpha: false });
   ctx.imageSmoothingEnabled = false;
+  spriteAtlas = new Image();
+  spriteAtlas.src = "./assets/characters-v2.png";
   world = createWorld();
   running = true;
   document.addEventListener("keydown", onKeyDown);
@@ -232,13 +234,15 @@ function draw(state, ts) {
     if (x < -20 || x > 340 || y < -20 || y > 200) continue;
     drawObject(ctx, o, x, y, ts);
   }
+  drawTargetGuidance(ctx, state, ts);
   const entities = actors.map(a => ({ ...a, player: false }));
-  entities.push({ x: state.x, y: state.y, color: "#f3d36f", id: "quang", player: true });
+  entities.push({ x: state.x, y: state.y, color: "#f3d36f", id: "quang", name: "Quang", player: true });
   entities.sort((a, b) => a.y - b.y);
   for (const a of entities) {
     const x = Math.round(a.x - state.cameraX), y = Math.round(a.y - state.cameraY);
     if (x < -16 || x > 336 || y < -25 || y > 205) continue;
     drawPerson(ctx, x, y, a.color, a.id, a.player ? state.facing : 2, a.player ? state.walking : 0);
+    drawNameTag(ctx, x, y - 39, a.name || "Quang", a.player, state.targetId === a.id);
     if (!a.player) {
       const near = objects.find(o => o.id === a.id);
       if (near && Math.hypot(state.x - a.x, state.y - a.y) < 38) drawBang(ctx, x, y - 23, ts);
@@ -248,9 +252,9 @@ function draw(state, ts) {
   const near = objects.filter(o => o.kind !== "npc" && Math.hypot(state.x - o.x, state.y - o.y) < 38)
     .sort((a, b) => Math.hypot(state.x - a.x, state.y - a.y) - Math.hypot(state.x - b.x, state.y - b.y))[0];
   if (near) drawBang(ctx, Math.round(near.x - state.cameraX), Math.round(near.y - state.cameraY - 17), ts);
-  ctx.fillStyle = "rgba(16,35,42,.57)"; ctx.fillRect(0, 0, 320, 13);
+  ctx.fillStyle = "rgba(16,35,42,.57)"; ctx.fillRect(0, 0, VIEW_W, 15);
   ctx.font = "bold 8px sans-serif"; ctx.fillStyle = "#f7e1ad";
-  ctx.fillText("MINH ĐĂNG  ·  TRUY TÌM DÂN CHỦ", 8, 9);
+  ctx.fillText("MINH ĐĂNG  ·  TRUY TÌM DÂN CHỦ", 8, 10);
 }
 function drawObject(c, o, x, y, ts) {
   c.fillStyle = "rgba(24,34,41,.33)"; c.fillRect(x - 9, y + 4, 19, 5);
@@ -279,6 +283,16 @@ function drawObject(c, o, x, y, ts) {
 }
 function drawPerson(c, x, y, color, id, face, walk) {
   const step = walk === 1 ? -1 : walk === 2 ? 1 : 0;
+  const spriteIndex = { quang: 0, trong: 1, kieu_anh: 2, ninh: 3, phuong: 4, dung: 5, bao: 6, han: 7, nam: 8 }[id];
+  if (spriteAtlas?.complete && spriteAtlas.naturalWidth && spriteIndex !== undefined) {
+    const cellW = spriteAtlas.naturalWidth / 3, cellH = spriteAtlas.naturalHeight / 3;
+    const sx = (spriteIndex % 3) * cellW, sy = Math.floor(spriteIndex / 3) * cellH;
+    c.fillStyle = "rgba(15,35,40,.38)"; c.beginPath(); c.ellipse(x, y + 3, 9, 3, 0, 0, Math.PI * 2); c.fill();
+    c.save(); c.imageSmoothingEnabled = true;
+    c.drawImage(spriteAtlas, sx, sy, cellW, cellH, x - 14, y - 36 + step * .5, 28, 39);
+    c.restore(); c.imageSmoothingEnabled = false;
+    return;
+  }
   c.fillStyle = "rgba(18,36,38,.40)"; c.fillRect(x - 7, y + 2, 14, 4);
   c.fillStyle = "#283b49"; c.fillRect(x - 5, y - 2, 4, 6 + step); c.fillRect(x + 1, y - 2, 4, 6 - step);
   c.fillStyle = color; c.fillRect(x - 6, y - 13, 12, 12);
@@ -297,6 +311,47 @@ function drawPerson(c, x, y, color, id, face, walk) {
   if (id === "nam") { c.fillStyle = "#caa977"; c.fillRect(x - 8, y - 8, 4, 6); }
   if (id === "phuong") { c.fillStyle = "#f2e6c2"; c.fillRect(x + 6, y - 10, 4, 6); }
   if (id === "ninh") { c.fillStyle = "#e5e9d8"; c.fillRect(x - 4, y - 17, 3, 2); c.fillRect(x + 1, y - 17, 3, 2); }
+}
+function drawNameTag(c, x, y, name, isPlayer, isTarget) {
+  c.save(); c.font = `bold ${isTarget ? 7 : 6}px sans-serif`;
+  const label = isTarget ? `★ ${name}` : name;
+  const width = Math.ceil(c.measureText(label).width) + 8;
+  c.fillStyle = isTarget ? "#f2c66f" : isPlayer ? "#183e57" : "rgba(20,35,43,.86)";
+  c.fillRect(Math.round(x - width / 2), Math.round(y - 7), width, 10);
+  c.fillStyle = isTarget ? "#26383f" : "#fff3cf";
+  c.fillText(label, Math.round(x - width / 2 + 4), Math.round(y));
+  c.restore();
+}
+function drawTargetGuidance(c, state, ts) {
+  if (!state.targetId || !state.targetLabel) return;
+  const tx = state.targetX - state.cameraX, ty = state.targetY - state.cameraY;
+  const px = state.x - state.cameraX, py = state.y - state.cameraY;
+  const inside = tx > 18 && tx < VIEW_W - 18 && ty > 25 && ty < VIEW_H - 18;
+  const coveredByQuestCard = inside && tx < 132 && ty < 136;
+  const pulse = reducedMotion ? 0 : Math.sin(ts / 210) * 2;
+  if (inside && !coveredByQuestCard) {
+    c.save();
+    c.strokeStyle = "rgba(255,218,126,.38)"; c.lineWidth = 1; c.setLineDash([2, 5]);
+    c.beginPath(); c.moveTo(px, py - 3); c.lineTo(tx, ty - 3); c.stroke(); c.setLineDash([]);
+    c.strokeStyle = "#ffe08a"; c.lineWidth = 2; c.beginPath(); c.ellipse(tx, ty + 3, 13 + pulse, 6 + pulse / 2, 0, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = "rgba(255,220,126,.14)"; c.fillRect(tx - 14, ty - 43, 28, 45);
+    c.restore();
+    if (!["phuong", "dung", "bao", "nam", "trong", "kieu_anh", "ninh", "han"].includes(state.targetId))
+      drawNameTag(c, tx, ty - 20, state.targetLabel, false, true);
+  } else {
+    const angle = Math.atan2(ty - py, tx - px);
+    let ex = coveredByQuestCard ? 145 : Math.max(25, Math.min(VIEW_W - 25, VIEW_W / 2 + Math.cos(angle) * 212));
+    let ey = coveredByQuestCard ? 150 : Math.max(27, Math.min(VIEW_H - 25, VIEW_H / 2 + Math.sin(angle) * 112));
+    // Tránh để chỉ dẫn bị thẻ nhiệm vụ che ở góc trái.
+    if (ex < 145 && ey < 142) ey = 158;
+    c.save(); c.translate(ex, ey); c.rotate(angle);
+    c.fillStyle = "#ffe08a"; c.beginPath(); c.moveTo(10 + pulse, 0); c.lineTo(-5, -6); c.lineTo(-2, 0); c.lineTo(-5, 6); c.closePath(); c.fill(); c.restore();
+    const distance = Math.max(1, Math.round(Math.hypot(state.targetX - state.x, state.targetY - state.y) / 16));
+    const label = `${state.targetLabel} · ${distance}m`;
+    c.save(); c.font = "bold 6px sans-serif"; const w = Math.ceil(c.measureText(label).width) + 8;
+    c.fillStyle = "rgba(20,36,43,.92)"; c.fillRect(Math.max(3, Math.min(VIEW_W - w - 3, ex - w / 2)), Math.max(14, ey - 17), w, 10);
+    c.fillStyle = "#ffe4a1"; c.fillText(label, Math.max(7, Math.min(VIEW_W - w + 1, ex - w / 2 + 4)), Math.max(21, ey - 10)); c.restore();
+  }
 }
 function drawBang(c, x, y, ts) {
   const bob = reducedMotion ? 0 : Math.sin(ts / 230) * 2;

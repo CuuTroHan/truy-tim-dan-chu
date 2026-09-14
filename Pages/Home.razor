@@ -7,7 +7,7 @@
 <PageTitle>Truy tìm Dân chủ — Bốn mảnh của Tiếng Nói</PageTitle>
 
 <main class="game-shell @(_reducedMotion ? "reduced-motion" : "")" style="--text-scale:@TextFactor()">
-    <canvas @ref="_canvas" width="320" height="180" aria-label="Bản đồ thị trấn Minh Đăng"></canvas>
+    <canvas @ref="_canvas" width="480" height="270" aria-label="Bản đồ thị trấn Minh Đăng"></canvas>
     <div class="world-vignette" aria-hidden="true"></div>
 
     @if (_started)
@@ -24,6 +24,7 @@
             <div class="eyebrow">✦ HÀNH TRÌNH <span>@_game.Shards / 4 MẢNH</span></div>
             <h2>@ChapterTitle()</h2>
             <p>@_game.Objective</p>
+            <div class="next-target"><small>BƯỚC TIẾP THEO</small><strong>➜ @_game.NextTarget</strong></div>
             <div class="shard-track" aria-label="@($"{_game.Shards} trên 4 mảnh đã tìm thấy")">
                 @for (var i = 0; i < 4; i++) { <span class="@(i < _game.Shards ? "found" : "")">@(i < _game.Shards ? "✦" : "·")</span> }
             </div>
@@ -46,6 +47,22 @@
         }
         @if (!string.IsNullOrEmpty(_game.Toast) && _game.Panel == Panel.None)
         { <div class="toast" role="status">@_game.Toast</div> }
+        @if (_tutorialOpen && _game.Panel == Panel.None)
+        {
+            <div class="tutorial-backdrop">
+                <section class="tutorial-card" aria-label="Hướng dẫn bắt đầu">
+                    <div class="tutorial-icon">⌖</div>
+                    <div class="modal-kicker">BẮT ĐẦU RẤT ĐƠN GIẢN</div>
+                    <h2>Đi theo mũi tên vàng</h2>
+                    <div class="tutorial-steps">
+                        <div><b>1</b><span><strong>Nhìn mũi tên</strong><small>Nó luôn chỉ tới người hoặc vật cần tìm tiếp theo.</small></span></div>
+                        <div><b>2</b><span><strong>Đọc tên trên đầu</strong><small>Mỗi nhân vật có ngoại hình, màu và vật dụng riêng.</small></span></div>
+                        <div><b>3</b><span><strong>Lại gần rồi nhấn E</strong><small>Khi thấy vòng sáng và dấu chấm than là có thể tương tác.</small></span></div>
+                    </div>
+                    <button class="primary-button wide" @onclick="CloseTutorial">ĐÃ HIỂU · BẮT ĐẦU →</button>
+                </section>
+            </div>
+        }
     }
 
     @if (!_started)
@@ -206,7 +223,8 @@
     private ElementReference _canvas;
     private DotNetObjectReference<Home>? _self;
     private IJSObjectReference? _module;
-    private bool _started, _hasSave, _journalOpen, _typewriter = true, _reducedMotion;
+    private bool _started, _hasSave, _journalOpen, _typewriter = true, _reducedMotion, _tutorialOpen;
+    private Chapter _lastChapter = Chapter.Opening;
     private string _shownLine = "";
     private string? _lineKey;
     private bool _lineComplete = true;
@@ -218,7 +236,7 @@
         _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/game.js");
         var saved = await _module.InvokeAsync<string?>("getSave");
         _hasSave = saved is not null;
-        if (_hasSave) _game.Load(saved);
+        if (_hasSave) { _game.Load(saved); _lastChapter = _game.Chapter; }
         _self = DotNetObjectReference.Create(this);
         await _module.InvokeVoidAsync("start", _self, _canvas);
         if (Navigation.Uri.Contains("presenter=1", StringComparison.OrdinalIgnoreCase)) { _started = true; _game.OpenPanel(Panel.Presenter); }
@@ -227,7 +245,7 @@
     private async Task NewGame()
     {
         if (_module is not null) await _module.InvokeVoidAsync("clearSave");
-        _typing?.Cancel(); _lineKey = null; _shownLine = "";
+        _typing?.Cancel(); _lineKey = null; _shownLine = ""; _tutorialOpen = false; _lastChapter = Chapter.Opening;
         _game = new GameEngine();
         _started = true; _hasSave = false;
         _game.Begin(); Sfx("start"); RefreshUi();
@@ -240,6 +258,7 @@
         _hasSave = saved is not null;
         _game = new GameEngine();
         if (_hasSave) _game.Load(saved);
+        _lastChapter = _game.Chapter;
         RefreshUi();
     }
     private string ChapterTitle() => _game.Chapter switch { Chapter.Lights => "Bốn ngọn đèn", Chapter.Draft => "Đường đi của ý kiến", Chapter.River => "Cuộc họp ven sông", Chapter.News => "Tin trên quảng trường", Chapter.Finale => "Khép vòng Tiếng Nói", Chapter.Complete => "Hành trình hoàn thành", _ => "Bắt đầu hành trình" };
@@ -251,7 +270,7 @@
     [JSInvokable]
     public Frame Tick(double timestamp, int keys)
     {
-        var frame = _game.Tick(timestamp, _started ? keys : 0);
+        var frame = _game.Tick(timestamp, _started && !_tutorialOpen ? keys : 0);
         if (frame.UiDirty) _ = InvokeAsync(RefreshUi);
         return frame;
     }
@@ -272,6 +291,7 @@
         _ = InvokeAsync(async () =>
         {
             if (code == "Presenter") { _started = true; _game.OpenPanel(Panel.Presenter); RefreshUi(); return; }
+            if (_tutorialOpen) { if (code is "KeyE" or "Space" or "Enter" or "Escape") CloseTutorial(); return; }
             if (code == "KeyM") { ToggleMute(); return; }
             if (_game.Panel == Panel.Dialogue) { if (code is "KeyE" or "Space" or "Enter") await NextDialogue(); return; }
             if (code == "Escape") { if (_game.Panel == Panel.None) _game.OpenPanel(Panel.Pause); else _game.ClosePanel(); }
@@ -281,6 +301,11 @@
     }
     private void RefreshUi()
     {
+        if (_game.Chapter != _lastChapter)
+        {
+            if (_lastChapter == Chapter.Opening && _game.Chapter == Chapter.Lights) _tutorialOpen = true;
+            _lastChapter = _game.Chapter;
+        }
         var line = _game.CurrentLine;
         var key = _game.Panel == Panel.Dialogue && line is not null ? $"{_game.DialogueIndex}:{line.Speaker}:{line.Text}" : null;
         if (key != _lineKey)
@@ -316,6 +341,7 @@
         RefreshUi(); await Task.CompletedTask;
     }
     private void ToggleJournal() { _journalOpen = !_journalOpen; RefreshUi(); }
+    private void CloseTutorial() { _tutorialOpen = false; RefreshUi(); }
     private void ShowHint() { if (_game.Hint is not null) { _game.ShowDialogue([new("Gợi ý", _game.Hint)]); RefreshUi(); } }
     private void TogglePause() { if (_game.Panel == Panel.None) _game.OpenPanel(Panel.Pause); else _game.ClosePanel(); RefreshUi(); }
     private void ClosePanel() { _game.ClosePanel(); RefreshUi(); }
@@ -329,7 +355,7 @@
     private void ChooseNews(int choice) { _game.ChooseNews(choice); Sfx(_game.Panel == Panel.Dialogue ? "success" : "click"); RefreshUi(); }
     private void AddFinalePiece(int piece) { _game.AddFinalePiece(piece); RefreshUi(); }
     private void AdvanceReturnStep(int step) { _game.AdvanceReturnStep(step); Sfx("click"); RefreshUi(); }
-    private void PresenterJump(Chapter chapter) { _game.PresenterJump(chapter); _started = true; RefreshUi(); }
+    private void PresenterJump(Chapter chapter) { _game.PresenterJump(chapter); _started = true; _tutorialOpen = false; _lastChapter = chapter; RefreshUi(); }
     private void ToggleTypewriter() { _typewriter = !_typewriter; RefreshUi(); }
     private void ToggleReducedMotion() { _reducedMotion = !_reducedMotion; if (_module is not null) _ = _module.InvokeVoidAsync("setReducedMotion", _reducedMotion); RefreshUi(); }
     private void ToggleMute() { _game.SetMuted(!_game.Muted); Sfx("click"); RefreshUi(); }

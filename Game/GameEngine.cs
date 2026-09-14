@@ -8,7 +8,9 @@ public enum Panel { None, Dialogue, Mirrors, Draft, River, News, Finale, Pause, 
 public sealed record Line(string Speaker, string Text);
 public sealed record Actor(string Id, string Name, float X, float Y, string Color, string Kind);
 public sealed record WorldObject(string Id, float X, float Y, string Kind, string Label, bool Done = false);
-public sealed record Frame(float X, float Y, float CameraX, float CameraY, int Facing, int Walking, Actor[] Actors, WorldObject[] Objects, string? Save, bool UiDirty);
+public sealed record Frame(float X, float Y, float CameraX, float CameraY, int Facing, int Walking,
+    Actor[] Actors, WorldObject[] Objects, string? TargetId, float TargetX, float TargetY, string? TargetLabel,
+    string? Save, bool UiDirty);
 public sealed record SaveData(int Version, Chapter Chapter, bool[] Spoken, bool[] Lamps, bool[] Clues, bool[] Lore, bool DraftDone, bool RiverDone, bool NewsDone, bool Muted, int TextScale);
 
 public sealed class GameEngine
@@ -114,6 +116,7 @@ public sealed class GameEngine
         Chapter.Finale => "Xếp bốn mảnh theo hành trình của tiếng nói, rồi đưa câu trả lời trở về.",
         _ => null
     };
+    public string NextTarget => FindTarget(ActiveObjects().ToArray())?.Label ?? "Khám phá thị trấn";
     public int Shards => Chapter switch
     {
         Chapter.Opening or Chapter.Lights => 0,
@@ -189,9 +192,31 @@ public sealed class GameEngine
         var dirty = UiDirty;
         UiDirty = false;
         var objects = ActiveObjects().ToArray();
+        var target = FindTarget(objects);
         return new Frame(X, Y,
-            Math.Clamp(X - 160, 0, 704), Math.Clamp(Y - 90, 0, 460),
-            Facing, Walking, ActiveActors().ToArray(), objects, save, dirty);
+            Math.Clamp(X - 240, 0, 544), Math.Clamp(Y - 135, 0, 370),
+            Facing, Walking, ActiveActors().ToArray(), objects,
+            target?.Id, target?.X ?? 0, target?.Y ?? 0, target?.Label,
+            save, dirty);
+    }
+
+    private WorldObject? FindTarget(WorldObject[] objects)
+    {
+        string? targetId = Chapter switch
+        {
+            Chapter.Lights when !Spoken.All(x => x) => new[] { "phuong", "dung", "bao", "nam" }[Array.FindIndex(Spoken, x => !x)],
+            Chapter.Lights when !Lamps.All(x => x) => "lamp" + Array.FindIndex(Lamps, x => !x),
+            Chapter.Lights => "mirror_board",
+            Chapter.Draft => "draft_board",
+            Chapter.River => "river_board",
+            Chapter.News when !Clues[0] => "clue0",
+            Chapter.News when !Clues[1] => "clue1",
+            Chapter.News when !Clues[2] => "bao",
+            Chapter.News => "news_board",
+            Chapter.Finale => "final_board",
+            _ => null
+        };
+        return targetId is null ? null : objects.FirstOrDefault(o => o.Id == targetId);
     }
 
     public void PauseClock() { _lastTime = 0; _accumulator = 0; Walking = 0; }
