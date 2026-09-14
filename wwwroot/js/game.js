@@ -1,6 +1,8 @@
 const W = 1024, H = 640, VIEW_W = 480, VIEW_H = 270;
 const input = { up: false, down: false, left: false, right: false };
-let running = false, raf = 0, busy = false, frame = null, ctx = null, world = null, dotnet = null, spriteAtlas = null;
+let running = false, raf = 0, busy = false, frame = null, ctx = null, canvasEl = null, world = null, dotnet = null;
+let portraitAtlas = null, quangWalkAtlas = null;
+let renderScale = 1, renderOffsetX = 0, renderOffsetY = 0;
 let walkTime = 0, lastDraw = 0, focus = true;
 let audioContext = null;
 let reducedMotion = false;
@@ -41,16 +43,21 @@ export function clearSave() {
 export function start(ref, canvas) {
   if (running) stop();
   dotnet = ref;
+  canvasEl = canvas;
   ctx = canvas.getContext("2d", { alpha: false });
   ctx.imageSmoothingEnabled = false;
-  spriteAtlas = new Image();
-  spriteAtlas.src = "./assets/characters-v2.png";
+  portraitAtlas = new Image();
+  portraitAtlas.src = "./assets/characters-v2.png";
+  quangWalkAtlas = new Image();
+  quangWalkAtlas.src = "./assets/quang-walk-v1.png";
   world = createWorld();
+  resizeCanvas();
   running = true;
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("keyup", onKeyUp);
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("blur", onBlur);
+  window.addEventListener("resize", resizeCanvas);
   raf = requestAnimationFrame(loop);
 }
 
@@ -61,6 +68,20 @@ export function stop() {
   document.removeEventListener("keyup", onKeyUp);
   document.removeEventListener("visibilitychange", onVisibility);
   window.removeEventListener("blur", onBlur);
+  window.removeEventListener("resize", resizeCanvas);
+}
+
+function resizeCanvas() {
+  if (!canvasEl) return;
+  const rect = canvasEl.getBoundingClientRect();
+  const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  const width = Math.max(1, Math.round(rect.width * dpr));
+  const height = Math.max(1, Math.round(rect.height * dpr));
+  if (canvasEl.width !== width) canvasEl.width = width;
+  if (canvasEl.height !== height) canvasEl.height = height;
+  renderScale = Math.min(width / VIEW_W, height / VIEW_H);
+  renderOffsetX = Math.round((width - VIEW_W * renderScale) / 2);
+  renderOffsetY = Math.round((height - VIEW_H * renderScale) / 2);
 }
 
 function onVisibility() {
@@ -224,14 +245,18 @@ function label(c, value, x, y, color) {
 }
 function draw(state, ts) {
   if (!ctx || !world) return;
+  resizeCanvas();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = "#172934";
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.setTransform(renderScale, 0, 0, renderScale, renderOffsetX, renderOffsetY);
   ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0, 0, VIEW_W, VIEW_H);
   ctx.drawImage(world, state.cameraX, state.cameraY, VIEW_W, VIEW_H, 0, 0, VIEW_W, VIEW_H);
   const actors = state.actors || [], objects = state.objects || [];
   for (const o of objects) {
     if (o.kind === "npc") continue;
     const x = Math.round(o.x - state.cameraX), y = Math.round(o.y - state.cameraY);
-    if (x < -20 || x > 340 || y < -20 || y > 200) continue;
+    if (x < -24 || x > VIEW_W + 24 || y < -24 || y > VIEW_H + 24) continue;
     drawObject(ctx, o, x, y, ts);
   }
   drawTargetGuidance(ctx, state, ts);
@@ -240,9 +265,9 @@ function draw(state, ts) {
   entities.sort((a, b) => a.y - b.y);
   for (const a of entities) {
     const x = Math.round(a.x - state.cameraX), y = Math.round(a.y - state.cameraY);
-    if (x < -16 || x > 336 || y < -25 || y > 205) continue;
-    drawPerson(ctx, x, y, a.color, a.id, a.player ? state.facing : 2, a.player ? state.walking : 0);
-    drawNameTag(ctx, x, y - 39, a.name || "Quang", a.player, state.targetId === a.id);
+    if (x < -28 || x > VIEW_W + 28 || y < -45 || y > VIEW_H + 18) continue;
+    drawPerson(ctx, x, y, a.color, a.id, a.player ? state.facing : 2, a.player ? state.walking : 0, ts);
+    drawNameTag(ctx, x, y - (a.player ? 45 : 39), a.name || "Quang", a.player, state.targetId === a.id);
     if (!a.player) {
       const near = objects.find(o => o.id === a.id);
       if (near && Math.hypot(state.x - a.x, state.y - a.y) < 38) drawBang(ctx, x, y - 23, ts);
@@ -281,15 +306,34 @@ function drawObject(c, o, x, y, ts) {
     }
   }
 }
-function drawPerson(c, x, y, color, id, face, walk) {
+function drawPerson(c, x, y, color, id, face, walk, ts) {
+  if (id === "quang" && quangWalkAtlas?.complete && quangWalkAtlas.naturalWidth) {
+    // Engine direction: 0 up, 1 right, 2 down, 3 left.
+    // Sprite rows: down, left, right, up.
+    const row = [3, 2, 0, 1][face] ?? 0;
+    const column = walk ? Math.floor(ts / 115) % 4 : 1;
+    const cellW = quangWalkAtlas.naturalWidth / 4;
+    // Các hàng được cắt riêng để không lấy lẹm tóc của hàng kế tiếp.
+    const rowCuts = [0, 316 / 1266, 620 / 1266, 936 / 1266, 1];
+    const sourceY = rowCuts[row] * quangWalkAtlas.naturalHeight;
+    const sourceH = (rowCuts[row + 1] - rowCuts[row]) * quangWalkAtlas.naturalHeight;
+    c.fillStyle = "rgba(15,35,40,.38)";
+    c.beginPath(); c.ellipse(x, y + 3, 10, 3.5, 0, 0, Math.PI * 2); c.fill();
+    c.save();
+    c.imageSmoothingEnabled = true;
+    c.drawImage(quangWalkAtlas, column * cellW, sourceY, cellW, sourceH, x - 22, y - 48, 44, 48);
+    c.restore();
+    c.imageSmoothingEnabled = false;
+    return;
+  }
   const step = walk === 1 ? -1 : walk === 2 ? 1 : 0;
   const spriteIndex = { quang: 0, trong: 1, kieu_anh: 2, ninh: 3, phuong: 4, dung: 5, bao: 6, han: 7, nam: 8 }[id];
-  if (spriteAtlas?.complete && spriteAtlas.naturalWidth && spriteIndex !== undefined) {
-    const cellW = spriteAtlas.naturalWidth / 3, cellH = spriteAtlas.naturalHeight / 3;
+  if (portraitAtlas?.complete && portraitAtlas.naturalWidth && spriteIndex !== undefined) {
+    const cellW = portraitAtlas.naturalWidth / 3, cellH = portraitAtlas.naturalHeight / 3;
     const sx = (spriteIndex % 3) * cellW, sy = Math.floor(spriteIndex / 3) * cellH;
     c.fillStyle = "rgba(15,35,40,.38)"; c.beginPath(); c.ellipse(x, y + 3, 9, 3, 0, 0, Math.PI * 2); c.fill();
     c.save(); c.imageSmoothingEnabled = true;
-    c.drawImage(spriteAtlas, sx, sy, cellW, cellH, x - 14, y - 36 + step * .5, 28, 39);
+    c.drawImage(portraitAtlas, sx, sy, cellW, cellH, x - 14, y - 36, 28, 39);
     c.restore(); c.imageSmoothingEnabled = false;
     return;
   }
@@ -328,29 +372,37 @@ function drawTargetGuidance(c, state, ts) {
   const px = state.x - state.cameraX, py = state.y - state.cameraY;
   const inside = tx > 18 && tx < VIEW_W - 18 && ty > 25 && ty < VIEW_H - 18;
   const coveredByQuestCard = inside && tx < 132 && ty < 136;
-  const pulse = reducedMotion ? 0 : Math.sin(ts / 210) * 2;
+  const pulse = reducedMotion ? 0 : Math.sin(ts / 210) * 1.5;
+  const angle = Math.atan2(ty - py, tx - px);
+  const distance = Math.max(1, Math.round(Math.hypot(state.targetX - state.x, state.targetY - state.y) / 16));
+
+  // La bàn nhiệm vụ luôn neo ngay dưới chân người chơi.
+  c.save();
+  c.translate(px, py + 11);
+  c.fillStyle = "rgba(20,36,43,.84)";
+  c.beginPath(); c.ellipse(0, 0, 11, 6, 0, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = "rgba(255,226,145,.72)"; c.lineWidth = 1;
+  c.beginPath(); c.ellipse(0, 0, 10, 5, 0, 0, Math.PI * 2); c.stroke();
+  c.rotate(angle);
+  c.fillStyle = "#ffe08a";
+  c.beginPath(); c.moveTo(9 + pulse, 0); c.lineTo(-4, -4); c.lineTo(-1, 0); c.lineTo(-4, 4); c.closePath(); c.fill();
+  c.restore();
+
+  const guideLabel = `${state.targetLabel} · ${distance}m`;
+  c.save(); c.font = "bold 6px sans-serif";
+  const guideWidth = Math.ceil(c.measureText(guideLabel).width) + 8;
+  const labelX = Math.max(3, Math.min(VIEW_W - guideWidth - 3, px - guideWidth / 2));
+  const labelY = Math.min(VIEW_H - 13, py + 20);
+  c.fillStyle = "rgba(20,36,43,.92)"; c.fillRect(labelX, labelY, guideWidth, 10);
+  c.fillStyle = "#ffe4a1"; c.fillText(guideLabel, labelX + 4, labelY + 7); c.restore();
+
   if (inside && !coveredByQuestCard) {
     c.save();
-    c.strokeStyle = "rgba(255,218,126,.38)"; c.lineWidth = 1; c.setLineDash([2, 5]);
-    c.beginPath(); c.moveTo(px, py - 3); c.lineTo(tx, ty - 3); c.stroke(); c.setLineDash([]);
     c.strokeStyle = "#ffe08a"; c.lineWidth = 2; c.beginPath(); c.ellipse(tx, ty + 3, 13 + pulse, 6 + pulse / 2, 0, 0, Math.PI * 2); c.stroke();
     c.fillStyle = "rgba(255,220,126,.14)"; c.fillRect(tx - 14, ty - 43, 28, 45);
     c.restore();
     if (!["phuong", "dung", "bao", "nam", "trong", "kieu_anh", "ninh", "han"].includes(state.targetId))
       drawNameTag(c, tx, ty - 20, state.targetLabel, false, true);
-  } else {
-    const angle = Math.atan2(ty - py, tx - px);
-    let ex = coveredByQuestCard ? 145 : Math.max(25, Math.min(VIEW_W - 25, VIEW_W / 2 + Math.cos(angle) * 212));
-    let ey = coveredByQuestCard ? 150 : Math.max(27, Math.min(VIEW_H - 25, VIEW_H / 2 + Math.sin(angle) * 112));
-    // Tránh để chỉ dẫn bị thẻ nhiệm vụ che ở góc trái.
-    if (ex < 145 && ey < 142) ey = 158;
-    c.save(); c.translate(ex, ey); c.rotate(angle);
-    c.fillStyle = "#ffe08a"; c.beginPath(); c.moveTo(10 + pulse, 0); c.lineTo(-5, -6); c.lineTo(-2, 0); c.lineTo(-5, 6); c.closePath(); c.fill(); c.restore();
-    const distance = Math.max(1, Math.round(Math.hypot(state.targetX - state.x, state.targetY - state.y) / 16));
-    const label = `${state.targetLabel} · ${distance}m`;
-    c.save(); c.font = "bold 6px sans-serif"; const w = Math.ceil(c.measureText(label).width) + 8;
-    c.fillStyle = "rgba(20,36,43,.92)"; c.fillRect(Math.max(3, Math.min(VIEW_W - w - 3, ex - w / 2)), Math.max(14, ey - 17), w, 10);
-    c.fillStyle = "#ffe4a1"; c.fillText(label, Math.max(7, Math.min(VIEW_W - w + 1, ex - w / 2 + 4)), Math.max(21, ey - 10)); c.restore();
   }
 }
 function drawBang(c, x, y, ts) {
