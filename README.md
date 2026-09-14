@@ -46,3 +46,7 @@ dotnet publish .\TruyTimDanChu.csproj -c Release -o .\dist
 - `dist\wwwroot`: bản web đã xuất bản, dùng để đem đi chạy trên máy chủ tĩnh.
 
 Game không dùng hình ảnh/font/âm thanh từ CDN. Khuyến nghị Chrome hoặc Edge desktop, màn hình 1280×720 trở lên. Bản game được thiết kế cho buổi demo khoảng 10–15 phút; thời lượng thực tế tùy tốc độ đọc và khám phá.
+
+## Ghi công asset
+
+Sprite nhân vật sử dụng **PIPOYA FREE RPG Character Sprites 32x32** của Pipoya. Bộ asset cho phép sử dụng và chỉnh sửa trong dự án cá nhân hoặc thương mại, nhưng không cho phép phân phối hoặc bán lại asset như một gói độc lập. Xem nguồn chính thức tại https://pipoya.itch.io/pipoya-free-rpg-character-sprites-32x32 và bản ghi giấy phép trong `wwwroot/assets/pipoya/LICENSE.md`.

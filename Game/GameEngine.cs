@@ -135,7 +135,6 @@ public sealed class GameEngine
     public bool SaveDirty { get; private set; }
 
     private List<Line> _dialogue = [];
-    private double _accumulator;
     private double _lastTime;
     private double _elapsedAccumulator;
     private Action? _afterDialogue;
@@ -166,16 +165,8 @@ public sealed class GameEngine
         _lastTime = timestampMs;
         if (Panel == Panel.None && Chapter != Chapter.Opening && Chapter != Chapter.Complete)
         {
-            _accumulator += delta;
             _elapsedAccumulator += delta;
-            var steps = 0;
-            while (_accumulator >= 16.666 && steps < 3)
-            {
-                Move(keys, 16.666f / 1000);
-                _accumulator -= 16.666;
-                steps++;
-            }
-            if (steps == 3) _accumulator = 0;
+            if (delta > 0) Move(keys, (float)(delta / 1000));
             if (_elapsedAccumulator >= 1000)
             {
                 ElapsedSeconds += (int)(_elapsedAccumulator / 1000);
@@ -185,7 +176,6 @@ public sealed class GameEngine
         else
         {
             Walking = 0;
-            _accumulator = 0;
         }
         var save = SaveDirty ? JsonSerializer.Serialize(CreateSave()) : null;
         SaveDirty = false;
@@ -219,7 +209,7 @@ public sealed class GameEngine
         return targetId is null ? null : objects.FirstOrDefault(o => o.Id == targetId);
     }
 
-    public void PauseClock() { _lastTime = 0; _accumulator = 0; Walking = 0; }
+    public void PauseClock() { _lastTime = 0; Walking = 0; }
 
     private void Move(int keys, float dt)
     {
@@ -239,7 +229,7 @@ public sealed class GameEngine
             var nextY = Math.Clamp(Y + sy / substeps, 16, 624);
             if (CanStand(X, nextY)) Y = nextY;
         }
-        Walking = ((int)(Environment.TickCount64 / 175) % 2) + 1;
+        Walking = 1;
         if (Math.Abs(X - _lastX) + Math.Abs(Y - _lastY) > 15)
         { _lastX = X; _lastY = Y; }
     }

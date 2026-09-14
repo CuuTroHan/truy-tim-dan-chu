@@ -1,9 +1,9 @@
 const W = 1024, H = 640, VIEW_W = 480, VIEW_H = 270;
 const input = { up: false, down: false, left: false, right: false };
 let running = false, raf = 0, busy = false, frame = null, ctx = null, canvasEl = null, world = null, dotnet = null;
-let portraitAtlas = null, quangWalkAtlas = null;
+let portraitAtlas = null, characterSheets = {};
 let renderScale = 1, renderOffsetX = 0, renderOffsetY = 0;
-let walkTime = 0, lastDraw = 0, focus = true;
+let lastDraw = 0, visualState = null, lastRenderTime = 0;
 let audioContext = null;
 let reducedMotion = false;
 
@@ -48,8 +48,14 @@ export function start(ref, canvas) {
   ctx.imageSmoothingEnabled = false;
   portraitAtlas = new Image();
   portraitAtlas.src = "./assets/characters-v2.png";
-  quangWalkAtlas = new Image();
-  quangWalkAtlas.src = "./assets/quang-walk-v1.png";
+  characterSheets = {};
+  for (const id of ["quang", "trong", "kieu_anh", "ninh", "phuong", "dung", "bao", "han", "nam"]) {
+    const sheet = new Image();
+    sheet.src = `./assets/pipoya/${id}.png`;
+    characterSheets[id] = sheet;
+  }
+  visualState = null;
+  lastRenderTime = 0;
   world = createWorld();
   resizeCanvas();
   running = true;
@@ -245,6 +251,7 @@ function label(c, value, x, y, color) {
 }
 function draw(state, ts) {
   if (!ctx || !world) return;
+  state = smoothFrame(state, ts);
   resizeCanvas();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#172934";
@@ -255,7 +262,7 @@ function draw(state, ts) {
   const actors = state.actors || [], objects = state.objects || [];
   for (const o of objects) {
     if (o.kind === "npc") continue;
-    const x = Math.round(o.x - state.cameraX), y = Math.round(o.y - state.cameraY);
+    const x = o.x - state.cameraX, y = o.y - state.cameraY;
     if (x < -24 || x > VIEW_W + 24 || y < -24 || y > VIEW_H + 24) continue;
     drawObject(ctx, o, x, y, ts);
   }
@@ -264,7 +271,7 @@ function draw(state, ts) {
   entities.push({ x: state.x, y: state.y, color: "#f3d36f", id: "quang", name: "Quang", player: true });
   entities.sort((a, b) => a.y - b.y);
   for (const a of entities) {
-    const x = Math.round(a.x - state.cameraX), y = Math.round(a.y - state.cameraY);
+    const x = a.x - state.cameraX, y = a.y - state.cameraY;
     if (x < -28 || x > VIEW_W + 28 || y < -45 || y > VIEW_H + 18) continue;
     drawPerson(ctx, x, y, a.color, a.id, a.player ? state.facing : 2, a.player ? state.walking : 0, ts);
     drawNameTag(ctx, x, y - (a.player ? 45 : 39), a.name || "Quang", a.player, state.targetId === a.id);
@@ -276,10 +283,33 @@ function draw(state, ts) {
   // Ánh sáng chỉ đường giữ việc tìm kiếm thoải mái, không cần minimap.
   const near = objects.filter(o => o.kind !== "npc" && Math.hypot(state.x - o.x, state.y - o.y) < 38)
     .sort((a, b) => Math.hypot(state.x - a.x, state.y - a.y) - Math.hypot(state.x - b.x, state.y - b.y))[0];
-  if (near) drawBang(ctx, Math.round(near.x - state.cameraX), Math.round(near.y - state.cameraY - 17), ts);
+  if (near) drawBang(ctx, near.x - state.cameraX, near.y - state.cameraY - 17, ts);
   ctx.fillStyle = "rgba(16,35,42,.57)"; ctx.fillRect(0, 0, VIEW_W, 15);
   ctx.font = "bold 8px sans-serif"; ctx.fillStyle = "#f7e1ad";
   ctx.fillText("MINH ĐĂNG  ·  TRUY TÌM DÂN CHỦ", 8, 10);
+}
+
+function smoothFrame(next, ts) {
+  const dt = lastRenderTime ? Math.min(50, ts - lastRenderTime) : 16.667;
+  lastRenderTime = ts;
+  if (!visualState || Math.hypot(next.x - visualState.x, next.y - visualState.y) > 64) {
+    visualState = { x: next.x, y: next.y };
+  } else {
+    const blend = 1 - Math.exp(-dt / 34);
+    visualState.x += (next.x - visualState.x) * blend;
+    visualState.y += (next.y - visualState.y) * blend;
+    if (!next.walking && Math.hypot(next.x - visualState.x, next.y - visualState.y) < .08) {
+      visualState.x = next.x;
+      visualState.y = next.y;
+    }
+  }
+  return {
+    ...next,
+    x: visualState.x,
+    y: visualState.y,
+    cameraX: Math.max(0, Math.min(W - VIEW_W, visualState.x - VIEW_W / 2)),
+    cameraY: Math.max(0, Math.min(H - VIEW_H, visualState.y - VIEW_H / 2))
+  };
 }
 function drawObject(c, o, x, y, ts) {
   c.fillStyle = "rgba(24,34,41,.33)"; c.fillRect(x - 9, y + 4, 19, 5);
@@ -307,21 +337,20 @@ function drawObject(c, o, x, y, ts) {
   }
 }
 function drawPerson(c, x, y, color, id, face, walk, ts) {
-  if (id === "quang" && quangWalkAtlas?.complete && quangWalkAtlas.naturalWidth) {
-    // Engine direction: 0 up, 1 right, 2 down, 3 left.
-    // Sprite rows: down, left, right, up.
+  const characterSheet = characterSheets[id];
+  if (characterSheet?.complete && characterSheet.naturalWidth) {
+    // Engine: up, right, down, left. Pipoya: down, left, right, up.
     const row = [3, 2, 0, 1][face] ?? 0;
-    const column = walk ? Math.floor(ts / 115) % 4 : 1;
-    const cellW = quangWalkAtlas.naturalWidth / 4;
-    // Các hàng được cắt riêng để không lấy lẹm tóc của hàng kế tiếp.
-    const rowCuts = [0, 316 / 1266, 620 / 1266, 936 / 1266, 1];
-    const sourceY = rowCuts[row] * quangWalkAtlas.naturalHeight;
-    const sourceH = (rowCuts[row + 1] - rowCuts[row]) * quangWalkAtlas.naturalHeight;
+    const cycle = [0, 1, 2, 1];
+    const column = walk ? cycle[Math.floor(ts / 92) % cycle.length] : 1;
+    const cellW = characterSheet.naturalWidth / 3;
+    const cellH = characterSheet.naturalHeight / 4;
+    const size = id === "quang" ? 40 : 36;
     c.fillStyle = "rgba(15,35,40,.38)";
-    c.beginPath(); c.ellipse(x, y + 3, 10, 3.5, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(x, y + 1.5, id === "quang" ? 9 : 8, 2.7, 0, 0, Math.PI * 2); c.fill();
     c.save();
-    c.imageSmoothingEnabled = true;
-    c.drawImage(quangWalkAtlas, column * cellW, sourceY, cellW, sourceH, x - 22, y - 48, 44, 48);
+    c.imageSmoothingEnabled = false;
+    c.drawImage(characterSheet, column * cellW, row * cellH, cellW, cellH, x - size / 2, y - size + 2, size, size);
     c.restore();
     c.imageSmoothingEnabled = false;
     return;
