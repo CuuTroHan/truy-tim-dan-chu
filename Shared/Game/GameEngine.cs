@@ -6,7 +6,7 @@ public enum Chapter { Opening, Lights, Draft, River, News, Finale, Complete }
 public enum Panel { None, Dialogue, Mirrors, Draft, River, News, Finale, Pause, Sources, Settings, Presenter }
 
 public sealed record Line(string Speaker, string Text);
-public sealed record Actor(string Id, string Name, float X, float Y, string Color, string Kind);
+public sealed record Actor(string Id, string Name, float X, float Y, string Color, string Kind, int Facing = 2, int Walking = 0);
 public sealed record WorldObject(string Id, float X, float Y, string Kind, string Label, bool Done = false);
 public sealed record Frame(float X, float Y, float CameraX, float CameraY, int Facing, int Walking,
     Actor[] Actors, WorldObject[] Objects, string? TargetId, float TargetX, float TargetY, string? TargetLabel,

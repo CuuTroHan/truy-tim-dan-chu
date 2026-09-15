@@ -68,7 +68,7 @@ public static class TownCollision
     }
 
     public static void SimulateStep(float currentX, float currentY, int keys, float dt,
-        out float newX, out float newY, out int facing, out int walking)
+        out float newX, out float newY, out int facing, out int walking, int currentFacing = 0)
     {
         float dx = ((keys & 8) != 0 ? 1 : 0) - ((keys & 4) != 0 ? 1 : 0);
         float dy = ((keys & 2) != 0 ? 1 : 0) - ((keys & 1) != 0 ? 1 : 0);
@@ -77,7 +77,7 @@ public static class TownCollision
         {
             newX = currentX;
             newY = currentY;
-            facing = 0;
+            facing = currentFacing;
             walking = 0;
             return;
         }

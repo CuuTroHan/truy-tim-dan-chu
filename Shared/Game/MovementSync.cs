@@ -73,7 +73,7 @@ public sealed class MovementReconciler
             foreach (var input in _unackedInputs)
             {
                 TownCollision.SimulateStep(curX, curY, input.Keys, input.Dt,
-                    out curX, out curY, out curFacing, out curWalking);
+                    out curX, out curY, out curFacing, out curWalking, curFacing);
             }
 
             float dx = curX - player.X;
@@ -215,11 +215,15 @@ public sealed class TeammateInterpolator
             CurrentFacing = latest.Facing;
             CurrentWalking = latest.Walking;
 
-            // Nếu rất gần đích (sai số < 0.1px), chốt về vị trí đích
-            if (Math.Abs(latest.X - CurrentX) < 0.1f && Math.Abs(latest.Y - CurrentY) < 0.1f)
+            // Nếu rất gần đích (sai số < 0.2px), chốt về vị trí đích
+            if (Math.Abs(latest.X - CurrentX) < 0.2f && Math.Abs(latest.Y - CurrentY) < 0.2f)
             {
                 CurrentX = latest.X;
                 CurrentY = latest.Y;
+                if (latest.Walking == 0)
+                {
+                    CurrentWalking = 0;
+                }
             }
         }
     }

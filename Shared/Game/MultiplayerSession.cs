@@ -192,7 +192,7 @@ public sealed class MultiplayerSession : IGameSession
             if (delta > 0)
             {
                 TownCollision.SimulateStep(_player.X, _player.Y, keys, dt,
-                    out var newX, out var newY, out var facing, out var walking);
+                    out var newX, out var newY, out var facing, out var walking, _player.Facing);
                 _player.X = newX;
                 _player.Y = newY;
                 _player.Facing = facing;
@@ -232,7 +232,7 @@ public sealed class MultiplayerSession : IGameSession
         {
             var interp = _teammateInterpolators.GetOrAdd(t.PlayerId, _ => new TeammateInterpolator(t.X, t.Y, t.Facing, t.Walking));
             interp.Update(dt);
-            actorList.Add(new Actor(t.AvatarId, t.DisplayName, interp.CurrentX, interp.CurrentY, t.AccentColor, "teammate"));
+            actorList.Add(new Actor(t.AvatarId, t.DisplayName, interp.CurrentX, interp.CurrentY, t.AccentColor, "teammate", interp.CurrentFacing, interp.CurrentWalking));
         }
 
         return new Frame(

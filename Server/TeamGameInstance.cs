@@ -68,7 +68,7 @@ public sealed class TeamMemberSession
             return true;
         }
 
-        TownCollision.SimulateStep(X, Y, keys, dtSeconds, out var newX, out var newY, out var facing, out var walking);
+        TownCollision.SimulateStep(X, Y, keys, dtSeconds, out var newX, out var newY, out var facing, out var walking, Facing);
         X = newX;
         Y = newY;
         Facing = facing;

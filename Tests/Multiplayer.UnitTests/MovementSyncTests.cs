@@ -238,4 +238,53 @@ public sealed class MovementSyncTests
         Assert.True(session.X > 500f, $"Kỳ vọng X > 500f nhưng thực tế là {session.X}");
         Assert.Equal(1, session.Walking);
     }
+
+    [Fact]
+    public void TeammateActor_ReflectsFacingAndWalking_WhenTeammateMoves()
+    {
+        var session = new MultiplayerSession("p1", "Player 1", "quang");
+        session.ApplySnapshot(new TeamGameStateSnapshot(
+            "match1", "team1", "Đội Đỏ", "#E53935",
+            [
+                new TeamMemberState("p1", "Player 1", "quang", "#E53935", 500f, 366f, 2, 0, true),
+                new TeamMemberState("p2", "Player 2", "bao", "#E53935", 518f, 366f, 2, 0, true)
+            ],
+            new TeamProgressSnapshot(Chapter.Opening, new bool[4], new bool[4], new bool[3], 1, 0)
+        ));
+
+        // Ban đầu đồng đội đứng yên quay mặt xuống dưới (Facing = 2, Walking = 0)
+        var frame0 = session.Tick(1000, 0);
+        var p2Actor0 = frame0.Actors.FirstOrDefault(a => a.Name == "Player 2");
+        Assert.NotNull(p2Actor0);
+        Assert.Equal(2, p2Actor0.Facing);
+        Assert.Equal(0, p2Actor0.Walking);
+
+        // Đồng đội p2 di chuyển lên trên (Facing = 0, Walking = 1)
+        session.UpdateTeammatePosition("p2", 518f, 350f, 0, 1, 1, 1050);
+
+        // Frame tiếp theo (dt = 50ms)
+        var frame1 = session.Tick(1050, 0);
+        var p2Actor1 = frame1.Actors.FirstOrDefault(a => a.Name == "Player 2");
+        Assert.NotNull(p2Actor1);
+        Assert.Equal(0, p2Actor1.Facing);
+        Assert.Equal(1, p2Actor1.Walking);
+
+        // Đồng đội p2 di chuyển sang phải (Facing = 1, Walking = 1)
+        session.UpdateTeammatePosition("p2", 530f, 350f, 1, 1, 2, 1100);
+
+        var frame2 = session.Tick(1100, 0);
+        var p2Actor2 = frame2.Actors.FirstOrDefault(a => a.Name == "Player 2");
+        Assert.NotNull(p2Actor2);
+        Assert.Equal(1, p2Actor2.Facing);
+        Assert.Equal(1, p2Actor2.Walking);
+
+        // Đồng đội dừng lại (Facing = 1, Walking = 0)
+        session.UpdateTeammatePosition("p2", 530f, 350f, 1, 0, 3, 1150);
+
+        var frame3 = session.Tick(1150, 0);
+        var p2Actor3 = frame3.Actors.FirstOrDefault(a => a.Name == "Player 2");
+        Assert.NotNull(p2Actor3);
+        Assert.Equal(1, p2Actor3.Facing);
+        Assert.Equal(0, p2Actor3.Walking);
+    }
 }
