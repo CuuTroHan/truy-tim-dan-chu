@@ -1,0 +1,272 @@
+@page "/online"
+@using TruyTimDanChu.Game
+@using TruyTimDanChu.Services
+@using TruyTimDanChu.Shared
+@implements IAsyncDisposable
+@inject IConfiguration Configuration
+@inject NavigationManager Navigation
+
+<PageTitle>Chơi online — Truy tìm Dân chủ</PageTitle>
+
+@if (_currentRoom?.Status == RoomStatus.Playing && _connection is not null)
+{
+    <MultiplayerGameView Connection="_connection"
+                         Room="_currentRoom"
+                         Players="_currentPlayers"
+                         Teams="_currentTeams"
+                         MyPlayerId="@(_myPlayerId ?? "player")"
+                         IsAdmin="_isAdmin"
+                         AdminToken="@_adminToken"
+                         OnLeaveMatch="LeaveLobby" />
+}
+else
+{
+    <main class="online-shell">
+        <section class="online-card" aria-labelledby="online-title">
+            <div class="modal-kicker">TRUY TÌM DÂN CHỦ</div>
+            <h1 id="online-title">Chơi online</h1>
+            <p>Kết nối máy chủ để chuẩn bị hành trình cùng đồng đội.</p>
+            <div class="online-status" role="status" aria-live="polite" data-state="@(_connection?.State.ToString() ?? "Failed")">
+                @(_configurationError ?? _connection?.Message)
+            </div>
+
+            @if (!string.IsNullOrEmpty(_kickedNotification))
+            {
+                <div class="form-error kick-alert" role="alert" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>⚠️ @_kickedNotification</span>
+                    <button class="icon-btn" @onclick="() => _kickedNotification = null">✕</button>
+                </div>
+            }
+
+            @if (_connection?.State == OnlineConnectionState.Connected)
+            {
+                @if (_currentRoom is not null)
+                {
+                    <Lobby Connection="_connection"
+                           Room="_currentRoom"
+                           InitialPlayers="_currentPlayers"
+                           InitialTeams="_currentTeams"
+                           CurrentPlayerId="@_myPlayerId"
+                           IsAdmin="_isAdmin"
+                           AdminToken="@_adminToken" />
+                }
+                else
+                {
+                    <div class="online-nav-tabs">
+                        <button class="tab-button @(_activeTab == "create" ? "active" : "")" @onclick='() => _activeTab = "create"'>
+                            TẠO PHÒNG MỚI
+                        </button>
+                        <button class="tab-button @(_activeTab == "join" ? "active" : "")" @onclick='() => _activeTab = "join"'>
+                            VÀO PHÒNG BẰNG MÃ
+                        </button>
+                    </div>
+
+                    @if (_activeTab == "create")
+                    {
+                        <CreateRoom Connection="_connection" OnCreated="HandleRoomCreated" />
+                    }
+                    else
+                    {
+                        <JoinRoom Connection="_connection" OnJoined="HandleRoomJoined" />
+                    }
+                }
+            }
+
+            <div class="online-actions">
+                @if (_connection?.State == OnlineConnectionState.Incompatible)
+                {
+                    <button class="primary-button" @onclick="Reload">TẢI LẠI TRANG</button>
+                }
+                else if (_connection is not null && _connection.State != OnlineConnectionState.Connected)
+                {
+                    <button class="primary-button" disabled="@(_connection.State == OnlineConnectionState.Connecting)" @onclick="Connect">
+                        @(_connection.State == OnlineConnectionState.Connecting ? "ĐANG KẾT NỐI…" : "THỬ LẠI")
+                    </button>
+                }
+                @if (_currentRoom is not null)
+                {
+                    <button class="secondary-button" @onclick="LeaveLobby">RỜI PHÒNG CHỜ</button>
+                }
+                <a class="secondary-button" href="/">VỀ GAME MỘT NGƯỜI</a>
+            </div>
+        </section>
+    </main>
+}
+
+@code {
+    private MultiplayerConnection? _connection;
+    private string? _configurationError;
+    private bool _disposed;
+    private string _activeTab = "create";
+
+    private RoomSnapshot? _currentRoom;
+    private List<PlayerSnapshot> _currentPlayers = [];
+    private List<TeamSnapshot> _currentTeams = [];
+    private string? _myPlayerId;
+    private bool _isAdmin;
+    private string? _adminToken;
+    private string? _kickedNotification;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var url = Configuration["Multiplayer:HubUrl"] ?? "/hubs/room";
+            var seconds = Configuration.GetValue("Multiplayer:ConnectTimeoutSeconds", 8);
+            _connection = new MultiplayerConnection(new Uri(new Uri(Navigation.BaseUri), url), TimeSpan.FromSeconds(seconds));
+        }
+        catch (ArgumentException)
+        {
+            _configurationError = "Cấu hình kết nối chưa hợp lệ. Vui lòng liên hệ người quản trị.";
+            return;
+        }
+
+        _connection.Changed += ConnectionChanged;
+        _connection.KickedFromRoom += OnKickedFromRoom;
+        _connection.MatchStarted += OnMatchStarted;
+        _connection.PlayerJoined += OnPlayerJoined;
+        _connection.PlayerLeft += OnPlayerLeft;
+        _connection.PlayerAvatarChanged += OnPlayerAvatarChanged;
+        _connection.PlayerTeamChanged += OnPlayerTeamChanged;
+        _connection.TeamAdded += OnTeamAdded;
+        _connection.TeamUpdated += OnTeamUpdated;
+        _connection.TeamRemoved += OnTeamRemoved;
+        _connection.TeamsReordered += OnTeamsReordered;
+
+        await _connection.ConnectAsync();
+    }
+
+    private void OnMatchStarted(MatchStartedEvent ev)
+    {
+        InvokeAsync(() =>
+        {
+            if (_currentRoom is not null)
+            {
+                _currentRoom = _currentRoom with { Status = RoomStatus.Playing, MatchId = ev.MatchId };
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnPlayerJoined(PlayerSnapshot p)
+    {
+        _currentPlayers.RemoveAll(x => x.PlayerId == p.PlayerId);
+        _currentPlayers.Add(p);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnPlayerLeft(string id)
+    {
+        _currentPlayers.RemoveAll(x => x.PlayerId == id);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnPlayerAvatarChanged(PlayerAvatarChangedEvent ev)
+    {
+        var idx = _currentPlayers.FindIndex(p => p.PlayerId == ev.PlayerId);
+        if (idx >= 0) _currentPlayers[idx] = _currentPlayers[idx] with { AvatarId = ev.AvatarId };
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnPlayerTeamChanged(PlayerTeamChangedEvent ev)
+    {
+        var idx = _currentPlayers.FindIndex(p => p.PlayerId == ev.PlayerId);
+        if (idx >= 0) _currentPlayers[idx] = _currentPlayers[idx] with { TeamId = ev.NewTeamId };
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnTeamAdded(TeamSnapshot t)
+    {
+        _currentTeams.RemoveAll(x => x.TeamId == t.TeamId);
+        _currentTeams.Add(t);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnTeamUpdated(TeamSnapshot t)
+    {
+        var idx = _currentTeams.FindIndex(x => x.TeamId == t.TeamId);
+        if (idx >= 0) _currentTeams[idx] = t;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnTeamRemoved(string id)
+    {
+        _currentTeams.RemoveAll(x => x.TeamId == id);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnTeamsReordered(List<TeamSnapshot> list)
+    {
+        _currentTeams = list;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnKickedFromRoom(PlayerKickedEvent ev)
+    {
+        InvokeAsync(() =>
+        {
+            _currentRoom = null;
+            _currentPlayers = [];
+            _currentTeams = [];
+            _myPlayerId = null;
+            _isAdmin = false;
+            _adminToken = null;
+            _kickedNotification = string.IsNullOrEmpty(ev.Reason)
+                ? "Bạn đã bị Quản trị viên mời ra khỏi phòng."
+                : $"Bạn đã bị Quản trị viên mời ra khỏi phòng. Lý do: {ev.Reason}";
+            StateHasChanged();
+        });
+    }
+
+    private void HandleRoomCreated(CreateRoomResponse res)
+    {
+        _currentRoom = res.Snapshot;
+        _isAdmin = true;
+        _adminToken = res.AdminToken;
+        _myPlayerId = "admin";
+        _currentPlayers = [];
+        _currentTeams = [];
+    }
+
+    private void HandleRoomJoined(JoinRoomResponse res)
+    {
+        _currentRoom = res.Room;
+        _isAdmin = false;
+        _adminToken = null;
+        _myPlayerId = res.PlayerId;
+        _currentPlayers = res.Players ?? [];
+        _currentTeams = res.Teams ?? [];
+    }
+
+    private void LeaveLobby()
+    {
+        _currentRoom = null;
+        _currentPlayers = [];
+        _currentTeams = [];
+        _myPlayerId = null;
+        _isAdmin = false;
+        _adminToken = null;
+    }
+
+    private void ConnectionChanged() => _ = InvokeAsync(() => { if (!_disposed) StateHasChanged(); });
+    private Task Connect() => _connection!.ConnectAsync();
+    private void Reload() => Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_connection is null) return;
+        _connection.Changed -= ConnectionChanged;
+        _connection.KickedFromRoom -= OnKickedFromRoom;
+        _connection.MatchStarted -= OnMatchStarted;
+        _connection.PlayerJoined -= OnPlayerJoined;
+        _connection.PlayerLeft -= OnPlayerLeft;
+        _connection.PlayerAvatarChanged -= OnPlayerAvatarChanged;
+        _connection.PlayerTeamChanged -= OnPlayerTeamChanged;
+        _connection.TeamAdded -= OnTeamAdded;
+        _connection.TeamUpdated -= OnTeamUpdated;
+        _connection.TeamRemoved -= OnTeamRemoved;
+        _connection.TeamsReordered -= OnTeamsReordered;
+        await _connection.DisposeAsync();
+    }
+}

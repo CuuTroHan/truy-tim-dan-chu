@@ -102,24 +102,32 @@ function clearInput() { input.up = input.down = input.left = input.right = false
 function onKeyDown(e) {
   if (["Space", "Enter"].includes(e.code) && e.target instanceof HTMLElement && e.target.closest("button")) return;
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
-  if (e.repeat && !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyA", "KeyS", "KeyD"].includes(e.code)) return;
-  if (e.code === "ArrowUp" || e.code === "KeyW") input.up = true;
-  if (e.code === "ArrowDown" || e.code === "KeyS") input.down = true;
-  if (e.code === "ArrowLeft" || e.code === "KeyA") input.left = true;
-  if (e.code === "ArrowRight" || e.code === "KeyD") input.right = true;
-  if (["KeyE", "Space", "Enter", "Escape", "KeyH", "KeyM"].includes(e.code)) {
-    dotnet?.invokeMethodAsync("KeyAction", e.code);
+  const code = e.code;
+  const key = e.key ? e.key.toLowerCase() : "";
+  const isMovementKey = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyA", "KeyS", "KeyD"].includes(code)
+    || ["w", "a", "s", "d", "ư", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key);
+  if (e.repeat && !isMovementKey) return;
+  if (code === "ArrowUp" || code === "KeyW" || key === "w" || key === "ư" || key === "arrowup") input.up = true;
+  if (code === "ArrowDown" || code === "KeyS" || key === "s" || key === "arrowdown") input.down = true;
+  if (code === "ArrowLeft" || code === "KeyA" || key === "a" || key === "arrowleft") input.left = true;
+  if (code === "ArrowRight" || code === "KeyD" || key === "d" || key === "arrowright") input.right = true;
+  if (["KeyE", "Space", "Enter", "Escape", "KeyH", "KeyM"].includes(code) || ["e", "h", "m"].includes(key)) {
+    const actCode = ["KeyE", "Space", "Enter", "Escape", "KeyH", "KeyM"].includes(code) ? code :
+      (key === "e" ? "KeyE" : key === "h" ? "KeyH" : "KeyM");
+    dotnet?.invokeMethodAsync("KeyAction", actCode);
   }
-  if (e.ctrlKey && e.shiftKey && e.code === "KeyP") {
+  if (e.ctrlKey && e.shiftKey && (code === "KeyP" || key === "p")) {
     e.preventDefault();
     dotnet?.invokeMethodAsync("KeyAction", "Presenter");
   }
 }
 function onKeyUp(e) {
-  if (e.code === "ArrowUp" || e.code === "KeyW") input.up = false;
-  if (e.code === "ArrowDown" || e.code === "KeyS") input.down = false;
-  if (e.code === "ArrowLeft" || e.code === "KeyA") input.left = false;
-  if (e.code === "ArrowRight" || e.code === "KeyD") input.right = false;
+  const code = e.code;
+  const key = e.key ? e.key.toLowerCase() : "";
+  if (code === "ArrowUp" || code === "KeyW" || key === "w" || key === "ư" || key === "arrowup") input.up = false;
+  if (code === "ArrowDown" || code === "KeyS" || key === "s" || key === "arrowdown") input.down = false;
+  if (code === "ArrowLeft" || code === "KeyA" || key === "a" || key === "arrowleft") input.left = false;
+  if (code === "ArrowRight" || code === "KeyD" || key === "d" || key === "arrowright") input.right = false;
 }
 function mask() {
   return (input.up ? 1 : 0) | (input.down ? 2 : 0) |
@@ -127,7 +135,7 @@ function mask() {
 }
 async function loop(ts) {
   if (!running) return;
-  if (!busy && !document.hidden) {
+  if (!busy) {
     busy = true;
     try {
       const next = await dotnet.invokeMethodAsync("Tick", ts, mask());
@@ -268,14 +276,20 @@ function draw(state, ts) {
   }
   drawTargetGuidance(ctx, state, ts);
   const entities = actors.map(a => ({ ...a, player: false }));
-  entities.push({ x: state.x, y: state.y, color: "#f3d36f", id: "quang", name: "Quang", player: true });
+  const myColor = state.playerColor || "#f3d36f";
+  const myId = state.playerAvatar || "quang";
+  const myName = state.playerName || "Quang";
+  entities.push({ x: state.x, y: state.y, color: myColor, id: myId, name: myName, player: true });
   entities.sort((a, b) => a.y - b.y);
   for (const a of entities) {
     const x = a.x - state.cameraX, y = a.y - state.cameraY;
     if (x < -28 || x > VIEW_W + 28 || y < -45 || y > VIEW_H + 18) continue;
-    drawPerson(ctx, x, y, a.color, a.id, a.player ? state.facing : 2, a.player ? state.walking : 0, ts);
-    drawNameTag(ctx, x, y - (a.player ? 45 : 39), a.name || "Quang", a.player, state.targetId === a.id);
-    if (!a.player) {
+    const isTeammate = a.kind === "teammate";
+    const face = a.player ? state.facing : (a.facing !== undefined ? a.facing : 2);
+    const walk = a.player ? state.walking : (a.walking !== undefined ? a.walking : 0);
+    drawPerson(ctx, x, y, a.color, a.id, face, walk, ts);
+    drawNameTag(ctx, x, y - (a.player ? 45 : 39), a.name || "Quang", a.player, state.targetId === a.id, isTeammate, a.color);
+    if (!a.player && !isTeammate) {
       const near = objects.find(o => o.id === a.id);
       if (near && Math.hypot(state.x - a.x, state.y - a.y) < 38) drawBang(ctx, x, y - 23, ts);
     }
@@ -385,13 +399,18 @@ function drawPerson(c, x, y, color, id, face, walk, ts) {
   if (id === "phuong") { c.fillStyle = "#f2e6c2"; c.fillRect(x + 6, y - 10, 4, 6); }
   if (id === "ninh") { c.fillStyle = "#e5e9d8"; c.fillRect(x - 4, y - 17, 3, 2); c.fillRect(x + 1, y - 17, 3, 2); }
 }
-function drawNameTag(c, x, y, name, isPlayer, isTarget) {
+function drawNameTag(c, x, y, name, isPlayer, isTarget, isTeammate, accentColor) {
   c.save(); c.font = `bold ${isTarget ? 7 : 6}px sans-serif`;
   const label = isTarget ? `★ ${name}` : name;
   const width = Math.ceil(c.measureText(label).width) + 8;
-  c.fillStyle = isTarget ? "#f2c66f" : isPlayer ? "#183e57" : "rgba(20,35,43,.86)";
+  c.fillStyle = isTarget ? "#f2c66f" : isPlayer ? "#183e57" : isTeammate ? "rgba(18,48,36,.92)" : "rgba(20,35,43,.86)";
   c.fillRect(Math.round(x - width / 2), Math.round(y - 7), width, 10);
-  c.fillStyle = isTarget ? "#26383f" : "#fff3cf";
+  if (isTeammate && accentColor) {
+    c.strokeStyle = accentColor;
+    c.lineWidth = 1;
+    c.strokeRect(Math.round(x - width / 2), Math.round(y - 7), width, 10);
+  }
+  c.fillStyle = isTarget ? "#26383f" : isPlayer ? "#ffe08a" : isTeammate ? "#e0f7e9" : "#fff3cf";
   c.fillText(label, Math.round(x - width / 2 + 4), Math.round(y));
   c.restore();
 }

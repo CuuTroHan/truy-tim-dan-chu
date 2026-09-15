@@ -1,0 +1,149 @@
+@using TruyTimDanChu.Services
+@using TruyTimDanChu.Shared
+@inject NavigationManager Navigation
+
+<section class="create-room-card" aria-labelledby="create-room-title">
+    @if (_createdRoom is null)
+    {
+        <h2 id="create-room-title">Tạo phòng thi đấu</h2>
+        <p class="create-room-desc">Cấu hình thông số cuộc thi và nhận mã phòng để mời các đội tham gia.</p>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="form-error" role="alert">@_errorMessage</div>
+        }
+
+        <div class="form-group">
+            <label for="room-name">Tên phòng thi đấu</label>
+            <input id="room-name" type="text" maxlength="50" @bind="_roomName" placeholder="VD: Cuộc thi Dân chủ 2026" />
+            <small>Từ 3 đến 50 ký tự.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="room-timelimit">Thời gian tối đa (phút)</label>
+            <input id="room-timelimit" type="number" min="1" max="120" @bind="_timeLimitMinutes" />
+            <small>Mặc định 15 phút (từ 1 đến 120 phút).</small>
+        </div>
+
+        <div class="form-checkboxes">
+            <label class="checkbox-label">
+                <input type="checkbox" @bind="_allowSelfTeamSelection" />
+                <span>Cho phép người chơi tự chọn đội</span>
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" @bind="_showLiveLeaderboard" />
+                <span>Hiển thị bảng tiến độ trực tiếp cho tất cả đội</span>
+            </label>
+        </div>
+
+        <div class="create-room-actions">
+            <button class="primary-button" disabled="@_submitting" @onclick="HandleCreateRoom">
+                @(_submitting ? "ĐANG TẠO PHÒNG…" : "XÁC NHẬN TẠO PHÒNG →")
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="room-created-success" role="status">
+            <div class="success-badge">✦ PHÒNG ĐÃ KHỞI TẠO THÀNH CÔNG</div>
+            <div class="room-code-display">
+                <span class="code-label">MÃ PHÒNG THI ĐẤU</span>
+                <strong class="code-value">@_createdRoom.RoomCode</strong>
+                <small>Chia sẻ mã này cho người chơi để cùng tham gia</small>
+            </div>
+
+            <div class="room-summary">
+                <div><span>Tên phòng:</span> <strong>@_createdRoom.Snapshot?.RoomName</strong></div>
+                <div><span>Trạng thái:</span> <strong class="status-pill">@_createdRoom.Snapshot?.Status</strong></div>
+                <div><span>Thời gian thi đấu:</span> <strong>@((_createdRoom.Snapshot?.TimeLimitSeconds ?? 900) / 60) phút</strong></div>
+                <div><span>Quyền của bạn:</span> <strong class="admin-pill">Admin (Quản trị viên)</strong></div>
+            </div>
+
+            <div class="created-actions">
+                <button class="primary-button" @onclick="GoToLobby">VÀO PHÒNG CHỜ (LOBBY) →</button>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public MultiplayerConnection? Connection { get; set; }
+    [Parameter] public EventCallback<CreateRoomResponse> OnCreated { get; set; }
+
+    private string _roomName = "Thị trấn Minh Đăng";
+    private int _timeLimitMinutes = 15;
+    private bool _allowSelfTeamSelection = true;
+    private bool _showLiveLeaderboard = true;
+    private bool _submitting;
+    private string? _errorMessage;
+    private CreateRoomResponse? _createdRoom;
+
+    public CreateRoomResponse? CreatedRoom => _createdRoom;
+
+    private async Task HandleCreateRoom()
+    {
+        _errorMessage = null;
+        var trimmed = _roomName?.Trim();
+        if (string.IsNullOrEmpty(trimmed) || trimmed.Length < 3 || trimmed.Length > 50)
+        {
+            _errorMessage = "Tên phòng phải từ 3 đến 50 ký tự.";
+            return;
+        }
+
+        if (_timeLimitMinutes < 1 || _timeLimitMinutes > 120)
+        {
+            _errorMessage = "Thời gian thi đấu phải từ 1 đến 120 phút.";
+            return;
+        }
+
+        if (Connection is null || Connection.State != OnlineConnectionState.Connected)
+        {
+            _errorMessage = "Chưa kết nối máy chủ. Vui lòng kiểm tra lại kết nối.";
+            return;
+        }
+
+        _submitting = true;
+        try
+        {
+            var req = new CreateRoomRequest(
+                trimmed,
+                _timeLimitMinutes * 60,
+                _allowSelfTeamSelection,
+                false,
+                _showLiveLeaderboard,
+                false,
+                false
+            );
+
+            var res = await Connection.CreateRoomAsync(req);
+            if (res.Success && res.RoomCode is not null)
+            {
+                _createdRoom = res;
+                if (OnCreated.HasDelegate)
+                {
+                    await OnCreated.InvokeAsync(res);
+                }
+            }
+            else
+            {
+                _errorMessage = res.ErrorCode switch
+                {
+                    RoomErrorCodes.InvalidRoomName => "Tên phòng không hợp lệ.",
+                    RoomErrorCodes.InvalidTimeLimit => "Thời gian thi đấu ngoài phạm vi cho phép.",
+                    RoomErrorCodes.ServerFull => "Máy chủ đã đạt số lượng phòng tối đa.",
+                    _ => $"Không thể tạo phòng: {res.ErrorCode ?? "Lỗi không xác định"}"
+                };
+            }
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private void GoToLobby()
+    {
+        // Chuyển tiếp vào lobby ở Phase 04
+    }
+}
+

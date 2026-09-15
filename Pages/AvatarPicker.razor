@@ -1,0 +1,119 @@
+@using TruyTimDanChu.Shared
+
+<div class="avatar-picker-container" aria-label="Bộ chọn ngoại hình người chơi">
+    <div class="avatar-picker-header">
+        <div class="avatar-picker-title-group">
+            <h3 class="avatar-picker-title">Chọn ngoại hình nhân vật</h3>
+            <span class="avatar-picker-subtitle">Xem trước 4 hướng chuyển động (Xuống - Trái - Phải - Lên)</span>
+        </div>
+        @if (!string.IsNullOrEmpty(SelectedAvatarId))
+        {
+            var selectedAvatar = AvatarCatalog.Get(SelectedAvatarId);
+            if (selectedAvatar is not null)
+            {
+                <div class="current-selected-badge">
+                    <span>Đang chọn: <strong>@selectedAvatar.DisplayName</strong></span>
+                    @if (!string.IsNullOrEmpty(CurrentDiscriminator))
+                    {
+                        <span class="discriminator-tag" title="Ký hiệu phân biệt khi trùng nhân vật">@CurrentDiscriminator</span>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="avatar-picker-error" role="alert">
+            @ErrorMessage
+        </div>
+    }
+
+    <div class="avatar-grid" role="radiogroup" aria-label="Danh sách nhân vật">
+        @foreach (var avatar in AvatarCatalog.All)
+        {
+            var isSelected = string.Equals(avatar.Id, SelectedAvatarId, StringComparison.OrdinalIgnoreCase);
+            var usersOfThisAvatar = RoomPlayers
+                .Where(p => string.Equals(p.AvatarId, avatar.Id, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var countUsing = usersOfThisAvatar.Count;
+
+            <div class="avatar-card @(isSelected ? "is-selected" : "") @(Disabled ? "is-disabled" : "")"
+                 role="radio"
+                 aria-checked="@isSelected"
+                 tabindex="0"
+                 data-avatar-id="@avatar.Id"
+                 @onclick="() => HandleSelect(avatar.Id)"
+                 @onkeydown="@(async e => { if (e.Key is "Enter" or " ") await HandleSelect(avatar.Id); })">
+
+                <div class="avatar-card-header">
+                    <span class="avatar-name">@avatar.DisplayName</span>
+                    @if (isSelected)
+                    {
+                        <span class="avatar-selected-check">✓ Đang chọn</span>
+                    }
+                    else if (countUsing > 0)
+                    {
+                        <span class="avatar-in-use-hint">@countUsing người dùng</span>
+                    }
+                </div>
+
+                <!-- Preview 4 hướng -->
+                <div class="avatar-directions-preview" title="Xem trước 4 hướng chuyển động của @avatar.DisplayName">
+                    <div class="dir-preview-box">
+                        <div class="pipoya-sprite dir-down" style="background-image: url('@avatar.AssetPath');"></div>
+                        <span class="dir-label">↓ Xuống</span>
+                    </div>
+                    <div class="dir-preview-box">
+                        <div class="pipoya-sprite dir-left" style="background-image: url('@avatar.AssetPath');"></div>
+                        <span class="dir-label">← Trái</span>
+                    </div>
+                    <div class="dir-preview-box">
+                        <div class="pipoya-sprite dir-right" style="background-image: url('@avatar.AssetPath');"></div>
+                        <span class="dir-label">→ Phải</span>
+                    </div>
+                    <div class="dir-preview-box">
+                        <div class="pipoya-sprite dir-up" style="background-image: url('@avatar.AssetPath');"></div>
+                        <span class="dir-label">↑ Lên</span>
+                    </div>
+                </div>
+
+                @if (usersOfThisAvatar.Count > 0)
+                {
+                    <div class="avatar-users-list">
+                        @foreach (var u in usersOfThisAvatar)
+                        {
+                            var disc = AvatarCatalog.GetDiscriminator(u.PlayerId, RoomPlayers);
+                            <span class="avatar-user-chip @(u.PlayerId == CurrentPlayerId ? "is-me" : "")">
+                                @u.DisplayName@(string.IsNullOrEmpty(disc) ? "" : " " + disc)
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? SelectedAvatarId { get; set; }
+    [Parameter] public string? CurrentPlayerId { get; set; }
+    [Parameter] public IReadOnlyList<PlayerSnapshot> RoomPlayers { get; set; } = [];
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback<string> OnAvatarSelected { get; set; }
+
+    private string CurrentDiscriminator =>
+        !string.IsNullOrEmpty(CurrentPlayerId) ? AvatarCatalog.GetDiscriminator(CurrentPlayerId, RoomPlayers) : "";
+
+    private async Task HandleSelect(string avatarId)
+    {
+        if (Disabled || string.Equals(avatarId, SelectedAvatarId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (OnAvatarSelected.HasDelegate)
+        {
+            await OnAvatarSelected.InvokeAsync(avatarId);
+        }
+    }
+}

@@ -10,7 +10,8 @@ public sealed record Actor(string Id, string Name, float X, float Y, string Colo
 public sealed record WorldObject(string Id, float X, float Y, string Kind, string Label, bool Done = false);
 public sealed record Frame(float X, float Y, float CameraX, float CameraY, int Facing, int Walking,
     Actor[] Actors, WorldObject[] Objects, string? TargetId, float TargetX, float TargetY, string? TargetLabel,
-    string? Save, bool UiDirty);
+    string? Save, bool UiDirty,
+    string? PlayerName = null, string? PlayerAvatar = null, string? PlayerColor = null);
 public sealed record SaveData(int Version, Chapter Chapter, bool[] Spoken, bool[] Lamps, bool[] Clues, bool[] Lore, bool DraftDone, bool RiverDone, bool NewsDone, bool Muted, int TextScale);
 
 public sealed class GameEngine
@@ -61,6 +62,7 @@ public sealed class GameEngine
     public Panel Panel { get; private set; } = Panel.None;
     public float X { get; private set; } = 500;
     public float Y { get; private set; } = 366;
+    public void SetPosition(float x, float y) { X = x; Y = y; }
     public int Facing { get; private set; } = 0;
     public int Walking { get; private set; }
     public int ElapsedSeconds { get; private set; }
@@ -234,22 +236,8 @@ public sealed class GameEngine
         { _lastX = X; _lastY = Y; }
     }
 
-    private bool CanStand(float px, float py)
-    {
-        // Những khối nhà và mặt nước là AABB cố định; hành lang luôn rộng ít nhất 32 px.
-        var bounds = new (float X, float Y, float W, float H)[]
-        {
-            (306, 34, 158, 48), (474, 36, 168, 50), // tường thư viện và xưởng
-            (757, 250, 132, 43), (757, 367, 132, 54), // hai cụm nhà ven sông
-            (430, 450, 152, 97), // công viên trung tâm
-            (80, 459, 62, 49), (316, 452, 82, 44), // sạp phố tin
-            (923, 194, 56, 303) // sông
-        };
-        foreach (var b in bounds)
-            if (px + 5 > b.X && px - 5 < b.X + b.W && py + 7 > b.Y && py - 4 < b.Y + b.H)
-                return false;
-        return true;
-    }
+    private bool CanStand(float px, float py) => TownCollision.CanStand(px, py);
+
 
     public void Interact()
     {
@@ -267,6 +255,8 @@ public sealed class GameEngine
         }
         Handle(target.Id);
     }
+
+    public void HandleObject(string id) => Handle(id);
 
     private void Handle(string id)
     {

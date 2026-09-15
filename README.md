@@ -50,3 +50,41 @@ Game không dùng hình ảnh/font/âm thanh từ CDN. Khuyến nghị Chrome ho
 ## Ghi công asset
 
 Sprite nhân vật sử dụng **PIPOYA FREE RPG Character Sprites 32x32** của Pipoya. Bộ asset cho phép sử dụng và chỉnh sửa trong dự án cá nhân hoặc thương mại, nhưng không cho phép phân phối hoặc bán lại asset như một gói độc lập. Xem nguồn chính thức tại https://pipoya.itch.io/pipoya-free-rpg-character-sprites-32x32 và bản ghi giấy phép trong `wwwroot/assets/pipoya/LICENSE.md`.
+
+## Multiplayer — Phase 01
+
+Đã có màn `/online` kiểm tra kết nối SignalR và phiên bản game. Chưa có tạo phòng, đội hoặc gameplay online. Nút **CHƠI ONLINE** nằm trên màn hình đầu; single-player vẫn chạy độc lập.
+
+Mở hai terminal tại thư mục dự án:
+
+```bash
+# Terminal 1: server, http://localhost:5080
+ dotnet run --project Server/TruyTimDanChu.Server.csproj
+
+# Terminal 2: client, http://localhost:5267
+ dotnet run --project TruyTimDanChu.csproj
+```
+
+Mở `http://localhost:5267/online`: phải thấy **Đã kết nối máy chủ**. Tắt server: trạng thái chuyển sang mất kết nối (mất mạng im lặng có thể cần khoảng 12 giây); bật lại server rồi bấm **THỬ LẠI**. Mỗi lần kết nối được giới hạn 8 giây. Rời màn online sẽ hủy kết nối; vào lại tạo kết nối mới. Phase này thử lại thủ công, chưa phục hồi phiên người chơi của phase 27.
+
+Cấu hình client: `wwwroot/appsettings.json` dùng `/hubs/room` cùng origin; `wwwroot/appsettings.Development.json` dùng `http://localhost:5080/hubs/room`. HTTPS client cần Hub HTTPS tương ứng để tránh mixed content; cấu hình local mặc định dùng HTTP ở cả hai phía. Không đặt secret trong các file cấu hình client công khai.
+
+Server: `Server/appsettings.Development.json` chỉ cho origin local đã chỉ định. Ngoài Development, cấu hình `Multiplayer:AllowedOrigins` cho origin cụ thể nếu client chạy khác origin; mặc định không cho cross-origin. Kiểm tra Origin áp dụng cả đường WebSocket; đây không phải xác thực người dùng. Phase 01 chỉ expose Handshake, không có lệnh quản trị/gameplay.
+
+Khi thay giao thức hoặc nội dung bản đồ, tăng version trong `Shared/ConnectionProtocol.cs` và phát hành client/server tương ứng. Server trả mã lỗi khi lệch protocol/content; client đóng kết nối đó và yêu cầu tải lại. Chưa cấu hình host client cùng server trong phase này.
+
+Kiểm thử:
+
+```bash
+dotnet test Tests/Multiplayer.UnitTests/Multiplayer.UnitTests.csproj -c Release
+dotnet test Tests/Multiplayer.IntegrationTests/Multiplayer.IntegrationTests.csproj -c Release
+dotnet run --project Tests/GameSmoke.csproj -c Release
+dotnet build TruyTimDanChu.csproj -c Release
+dotnet build Server/TruyTimDanChu.Server.csproj -c Release
+```
+
+Integration test chạy Kestrel trên cổng loopback ngẫu nhiên với client SignalR thật, bao gồm handshake, sai phiên bản, CORS/WebSocket Origin, restart/retry, timeout và dispose khi đang kết nối. Test sử dụng trực tiếp source `MultiplayerConnection.cs` của client để kiểm tra vòng đời mà không kéo WASM vào tiến trình test.
+
+Tham khảo API: [SignalR .NET client — Microsoft Learn](https://learn.microsoft.com/en-us/aspnet/core/signalr/dotnet-client?view=aspnetcore-10.0).
+
+Khi rebuild client trong lúc dev server đang chạy và thấy runtime fingerprint trả 404, dừng rồi chạy lại tiến trình client và hard reload Chrome. Trang cần nạp `TruyTimDanChu.styles.css` để áp dụng CSS riêng của các component.

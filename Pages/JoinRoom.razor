@@ -1,0 +1,96 @@
+@using TruyTimDanChu.Services
+@using TruyTimDanChu.Shared
+
+<section class="join-room-card" aria-labelledby="join-room-title">
+    <h2 id="join-room-title">Vào phòng thi đấu</h2>
+    <p class="join-room-desc">Nhập mã phòng do Admin cung cấp và tên hiển thị của bạn để tham gia.</p>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="form-error" role="alert">@_errorMessage</div>
+    }
+
+    <div class="form-group">
+        <label for="join-code">Mã phòng thi đấu</label>
+        <input id="join-code" type="text" maxlength="10" @bind="_roomCode" @bind:event="oninput" placeholder="VD: DC-4821" style="text-transform:uppercase;font-family:monospace;letter-spacing:2px;font-weight:700" />
+        <small>Mã phòng có tiền tố DC-</small>
+    </div>
+
+    <div class="form-group">
+        <label for="player-name">Tên hiển thị của bạn</label>
+        <input id="player-name" type="text" maxlength="25" @bind="_displayName" placeholder="VD: Hoàng Nam" />
+        <small>Từ 2 đến 25 ký tự, không trùng với thành viên khác.</small>
+    </div>
+
+    <div class="join-room-actions">
+        <button class="primary-button" disabled="@_submitting" @onclick="HandleJoin">
+            @(_submitting ? "ĐANG THAM GIA…" : "THAM GIA PHÒNG →")
+        </button>
+    </div>
+</section>
+
+@code {
+    [Parameter] public MultiplayerConnection? Connection { get; set; }
+    [Parameter] public EventCallback<JoinRoomResponse> OnJoined { get; set; }
+
+    private string _roomCode = "";
+    private string _displayName = "";
+    private bool _submitting;
+    private string? _errorMessage;
+
+    private async Task HandleJoin()
+    {
+        _errorMessage = null;
+        var code = _roomCode?.Trim().ToUpperInvariant();
+        var name = _displayName?.Trim();
+
+        if (string.IsNullOrEmpty(code))
+        {
+            _errorMessage = "Vui lòng nhập mã phòng.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(name) || name.Length < 2 || name.Length > 25)
+        {
+            _errorMessage = "Tên hiển thị phải từ 2 đến 25 ký tự.";
+            return;
+        }
+
+        if (Connection is null || Connection.State != OnlineConnectionState.Connected)
+        {
+            _errorMessage = "Chưa kết nối máy chủ. Vui lòng thử lại.";
+            return;
+        }
+
+        _submitting = true;
+        try
+        {
+            var res = await Connection.JoinRoomAsync(new JoinRoomRequest(code, name));
+            if (res.Success)
+            {
+                if (OnJoined.HasDelegate)
+                {
+                    await OnJoined.InvokeAsync(res);
+                }
+            }
+            else
+            {
+                _errorMessage = res.ErrorCode switch
+                {
+                    RoomErrorCodes.RoomNotFound => "Mã phòng không tồn tại hoặc đã đóng.",
+                    RoomErrorCodes.DuplicateDisplayName => "Tên người chơi này đã có người sử dụng trong phòng.",
+                    RoomErrorCodes.InvalidDisplayName => "Tên hiển thị không hợp lệ.",
+                    RoomErrorCodes.RoomFull => "Phòng thi đấu đã đủ số lượng người tối đa.",
+                    RoomErrorCodes.JoinNotAllowed => "Phòng đã bắt đầu và không cho phép tham gia muộn.",
+                    RoomErrorCodes.JoinLocked => "Phòng thi đấu hiện đang khóa, không nhận thêm người chơi mới.",
+                    _ => $"Không thể vào phòng: {res.ErrorCode ?? "Lỗi không xác định"}"
+                };
+            }
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}
+

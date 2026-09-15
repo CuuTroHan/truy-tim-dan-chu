@@ -75,6 +75,7 @@
             <div class="title-buttons">
                 <button class="primary-button" @onclick="NewGame">BẮT ĐẦU HÀNH TRÌNH <span>→</span></button>
                 @if (_hasSave) { <button class="secondary-button" @onclick="ContinueGame">TIẾP TỤC LƯỢT TRƯỚC</button> }
+                <a class="secondary-button" href="online" style="text-decoration:none;text-align:center">CHƠI ONLINE</a>
             </div>
             <div class="title-note">Di chuyển bằng WASD hoặc phím mũi tên · Nhấn E để tương tác · Khoảng 10–15 phút</div>
         </section>
@@ -219,7 +220,7 @@
 </main>
 
 @code {
-    private GameEngine _game = new();
+    private IGameSession _game = new SinglePlayerSession();
     private ElementReference _canvas;
     private DotNetObjectReference<Home>? _self;
     private IJSObjectReference? _module;
@@ -246,7 +247,7 @@
     {
         if (_module is not null) await _module.InvokeVoidAsync("clearSave");
         _typing?.Cancel(); _lineKey = null; _shownLine = ""; _tutorialOpen = false; _lastChapter = Chapter.Opening;
-        _game = new GameEngine();
+        _game = new SinglePlayerSession();
         _started = true; _hasSave = false;
         _game.Begin(); Sfx("start"); RefreshUi();
     }
@@ -256,7 +257,7 @@
         _started = false; _journalOpen = false; _typing?.Cancel(); _lineKey = null;
         var saved = _module is null ? null : await _module.InvokeAsync<string?>("getSave");
         _hasSave = saved is not null;
-        _game = new GameEngine();
+        _game = new SinglePlayerSession();
         if (_hasSave) _game.Load(saved);
         _lastChapter = _game.Chapter;
         RefreshUi();

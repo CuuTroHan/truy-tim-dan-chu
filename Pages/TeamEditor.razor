@@ -1,0 +1,155 @@
+@using TruyTimDanChu.Services
+@using TruyTimDanChu.Shared
+
+<section class="team-editor-box" aria-label="Thêm đội mới">
+    <div class="team-editor-header">
+        <h4>✦ Thêm đội thi đấu</h4>
+        <span class="team-editor-hint">Cấu hình tên, màu sắc và sức chứa riêng</span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="team-editor-error" role="alert">
+            @_errorMessage
+        </div>
+    }
+
+    <form class="team-editor-form" @onsubmit="HandleAddTeam" @onsubmit:preventDefault>
+        <div class="form-row">
+            <div class="form-group flex-2">
+                <label for="team-name-input">TÊN ĐỘI</label>
+                <input id="team-name-input"
+                       type="text"
+                       placeholder="Ví dụ: Đội Đỏ, Đội Sao Vàng…"
+                       maxlength="30"
+                       @bind="_name"
+                       @bind:event="oninput"
+                       disabled="@_isSubmitting" />
+            </div>
+
+            <div class="form-group flex-1">
+                <label for="team-capacity-input">SỨC CHỨA (1–8)</label>
+                <input id="team-capacity-input"
+                       type="number"
+                       min="1"
+                       max="8"
+                       @bind="_capacity"
+                       @bind:event="oninput"
+                       disabled="@_isSubmitting" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>MÀU ĐỘI</label>
+            <div class="color-palette">
+                @foreach (var c in PresetColors)
+                {
+                    <button type="button"
+                            class="color-chip @(_color == c ? "selected" : "")"
+                            style="background-color: @c"
+                            @onclick="() => _color = c"
+                            aria-label="Chọn màu @c"
+                            title="@c">
+                        @if (_color == c)
+                        {
+                            <span class="color-check">✓</span>
+                        }
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="team-editor-actions">
+            <button type="submit"
+                    class="primary-button add-team-btn"
+                    disabled="@(_isSubmitting || string.IsNullOrWhiteSpace(_name))">
+                @(_isSubmitting ? "ĐANG THÊM…" : "+ THÊM ĐỘI MỚI")
+            </button>
+        </div>
+    </form>
+</section>
+
+@code {
+    [Parameter] public MultiplayerConnection? Connection { get; set; }
+    [Parameter] public string RoomId { get; set; } = "";
+    [Parameter] public string AdminToken { get; set; } = "";
+    [Parameter] public EventCallback<TeamSnapshot> OnTeamAdded { get; set; }
+
+    private static readonly string[] PresetColors =
+    [
+        "#E53935", // Đỏ
+        "#1E88E5", // Xanh dương
+        "#43A047", // Xanh lá
+        "#FB8C00", // Cam
+        "#8E24AA", // Tím
+        "#00ACC1", // Lam ngọc
+        "#FDD835", // Vàng
+        "#6D4C41"  // Nâu
+    ];
+
+    private string _name = "";
+    private string _color = "#E53935";
+    private int _capacity = 4;
+    private bool _isSubmitting;
+    private string? _errorMessage;
+
+    private async Task HandleAddTeam()
+    {
+        _errorMessage = null;
+        var trimmedName = _name?.Trim();
+        if (string.IsNullOrEmpty(trimmedName) || trimmedName.Length < 2)
+        {
+            _errorMessage = "Tên đội phải có ít nhất 2 ký tự.";
+            return;
+        }
+
+        if (_capacity < 1 || _capacity > 8)
+        {
+            _errorMessage = "Sức chứa mỗi đội từ 1 đến 8 người.";
+            return;
+        }
+
+        if (Connection is null)
+        {
+            _errorMessage = "Mất kết nối máy chủ.";
+            return;
+        }
+
+        _isSubmitting = true;
+        try
+        {
+            var req = new AdminAddTeamRequest(RoomId, AdminToken, trimmedName, _color, _capacity);
+            var res = await Connection.AdminAddTeamAsync(req);
+            if (res.Success && res.Team is not null)
+            {
+                _name = "";
+                // Tự động chuyển màu mặc định tiếp theo
+                var idx = Array.IndexOf(PresetColors, _color);
+                _color = PresetColors[(idx + 1) % PresetColors.Length];
+                await OnTeamAdded.InvokeAsync(res.Team);
+            }
+            else
+            {
+                _errorMessage = MapError(res.ErrorCode);
+            }
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private static string MapError(string? code) => code switch
+    {
+        RoomErrorCodes.InvalidTeamName => "Tên đội không hợp lệ (2–30 ký tự).",
+        RoomErrorCodes.InvalidTeamColor => "Màu sắc đội không hợp lệ.",
+        RoomErrorCodes.InvalidTeamCapacity => "Sức chứa đội phải từ 1 đến 8 người.",
+        RoomErrorCodes.DuplicateTeamName => "Tên đội này đã tồn tại trong phòng.",
+        RoomErrorCodes.MaxTeamsExceeded => "Đã đạt giới hạn tối đa 10 đội trong một phòng.",
+        RoomErrorCodes.TotalCapacityExceeded => "Tổng sức chứa các đội vượt quá giới hạn phòng (tối đa 40 người).",
+        RoomErrorCodes.UnauthorizedAdmin => "Bạn không có quyền quản trị phòng này.",
+        RoomErrorCodes.InvalidRoomStatus => "Chỉ có thể thêm đội khi phòng đang ở phòng chờ (Lobby).",
+        RoomErrorCodes.RoomNotFound => "Phòng không tồn tại hoặc đã kết thúc.",
+        _ => "Không thể thêm đội. Vui lòng thử lại (" + (code ?? "UNKNOWN") + ")."
+    };
+}
