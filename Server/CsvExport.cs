@@ -36,7 +36,7 @@ public static class CsvExport
     {
         var name = string.IsNullOrWhiteSpace(value) ? "match-results" : value.Trim();
         foreach (var c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
-        name = name.Replace('/', '_').Replace('\\', '_');
+        name = name.Replace('/', '_').Replace('\\', '_').Replace(':', '_');
         return name.Length > 80 ? name[..80] : name;
     }
 
