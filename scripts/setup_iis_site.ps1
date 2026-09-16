@@ -6,7 +6,7 @@
 param (
     [int]$Port = 5080,
     [string]$SiteName = "TruyTimDanChu",
-    [string]$PhysicalPath = "C:\inetpub\truy-tim-dan-chu"
+    [string]$PhysicalPath = "C:\inetpub\wwwroot\truy-tim-dan-chu"
 )
 
 Write-Host "=== BAT DAU CAU HINH IIS CHO TRUY TIM DAN CHU ===" -ForegroundColor Cyan

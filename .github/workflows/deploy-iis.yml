@@ -14,13 +14,18 @@ jobs:
       - name: 1. Checkout repository
         uses: actions/checkout@v4
 
-      - name: 2. Run Automated Unit Tests
+      - name: 2. Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 3. Run Automated Unit Tests
         shell: powershell
         run: |
           Write-Host "Dang chay bo kiem thu tu dong..." -ForegroundColor Cyan
           dotnet test Tests/Multiplayer.UnitTests/Multiplayer.UnitTests.csproj -c Release --nologo
 
-      - name: 3. Publish Blazor WebAssembly Client
+      - name: 4. Publish Blazor WebAssembly Client
         shell: powershell
         run: |
           Write-Host "Dang bien dich Client Blazor WebAssembly..." -ForegroundColor Cyan
@@ -28,7 +33,7 @@ jobs:
           if (Test-Path $clientOut) { Remove-Item $clientOut -Recurse -Force }
           dotnet publish TruyTimDanChu.csproj -c Release -o $clientOut --nologo
 
-      - name: 4. Publish Game Server (ASP.NET Core)
+      - name: 5. Publish Game Server (ASP.NET Core)
         shell: powershell
         run: |
           Write-Host "Dang bien dich Game Server..." -ForegroundColor Cyan
@@ -36,7 +41,7 @@ jobs:
           if (Test-Path $serverOut) { Remove-Item $serverOut -Recurse -Force }
           dotnet publish Server/TruyTimDanChu.Server.csproj -c Release -o $serverOut --nologo
 
-      - name: 5. Merge Client assets into Server wwwroot
+      - name: 6. Merge Client assets into Server wwwroot
         shell: powershell
         run: |
           Write-Host "Dong goi Client vao wwwroot cua Server..." -ForegroundColor Cyan
@@ -44,10 +49,10 @@ jobs:
           if (-not (Test-Path $serverWwwroot)) { New-Item -ItemType Directory -Path $serverWwwroot -Force }
           Copy-Item -Path "C:\TempDeploy\client\wwwroot\*" -Destination $serverWwwroot -Recurse -Force
 
-      - name: 6. Deploy to IIS inetpub
+      - name: 7. Deploy to IIS inetpub
         shell: powershell
         run: |
-          $targetDir = "C:\inetpub\truy-tim-dan-chu"
+          $targetDir = "C:\inetpub\wwwroot\truy-tim-dan-chu"
           Write-Host "Trien khai den $targetDir..." -ForegroundColor Cyan
 
           if (-not (Test-Path $targetDir)) {
