@@ -73,3 +73,4 @@ if (-not $firewallRule) {
 Write-Host "`n=== HOAN TAT CAU HINH IIS! ===" -ForegroundColor Cyan
 Write-Host "Dia chi truy cap game qua IP VPS: http://<IP_VPS>:$Port" -ForegroundColor White
 Write-Host "Sau nay khi co domain, ban chi can vao IIS Manager -> Bindings -> them Host Name vao port 80/443 la xong!" -ForegroundColor White
+

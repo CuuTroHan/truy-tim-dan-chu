@@ -92,3 +92,4 @@ jobs:
           }
 
           Write-Host "Auto-Deploy hoan tat thanh cong!" -ForegroundColor Green
+
