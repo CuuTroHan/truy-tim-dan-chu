@@ -6,7 +6,7 @@
     <header class="lobby-header">
         <div class="lobby-code-badge">
             <span>MÃ PHÒNG</span>
-            <strong>@(Room?.RoomCode ?? "DC-XXXX")</strong>
+            <strong data-testid="lobby-room-code">@(Room?.RoomCode ?? "DC-XXXX")</strong>
         </div>
         <div class="lobby-meta">
             <h2 id="lobby-title">@(Room?.RoomName ?? "Phòng thi đấu")</h2>
@@ -87,7 +87,7 @@
                             var team = _teams[i];
                             var isEditing = _editingTeamId == team.TeamId;
 
-                            <div class="team-card" style="border-left-color: @team.Color" data-team-id="@team.TeamId">
+                            <div class="team-card" style="border-left-color: @team.Color" data-team-id="@team.TeamId" data-testid="team-card-@team.TeamId">
                                 @if (isEditing)
                                 {
                                     <div class="team-card-edit-form">
@@ -211,7 +211,7 @@
                                             }
                                             else
                                             {
-                                                <button class="primary-button small-btn join-team-btn"
+                                                <button class="primary-button small-btn join-team-btn" data-testid="join-team-@team.TeamId"
                                                         disabled="@(_isActionSubmitting || isFull)"
                                                         @onclick="() => JoinTeam(team.TeamId)">
                                                     @(isFull ? "ĐÃ ĐẦY" : "VÀO ĐỘI")
@@ -232,6 +232,23 @@
                             RoomId="@Room.RoomId"
                             AdminToken="@AdminToken"
                             OnTeamAdded="HandleTeamAdded" />
+                <div class="admin-start-bar" style="margin-top:12px">
+                    <button class="secondary-button" disabled="@_isActionSubmitting" @onclick="ToggleAdminCanPlay">
+                        @(Room.AdminCanPlay ? "TẮT ADMIN CHƠI" : "BẬT ADMIN CHƠI")
+                    </button>
+                    <button class="secondary-button" data-testid="toggle-end-on-first-finish" disabled="@_isActionSubmitting || Room.Status != RoomStatus.Lobby" @onclick="ToggleEndOnFirstFinish">
+                        @(Room.EndOnFirstFinish ? "TẮT KẾT THÚC KHI ĐỘI ĐẦU TIÊN XONG" : "BẬT KẾT THÚC KHI ĐỘI ĐẦU TIÊN XONG")
+                    </button>
+                    <small>@(Room.EndOnFirstFinish ? "Đội đầu tiên hoàn thành sẽ kết thúc trận cho tất cả." : "Các đội tiếp tục đến khi tất cả hoàn thành hoặc hết giờ.")</small>
+                    @if (Room.AdminCanPlay && !_players.Any(p => p.IsAdmin))
+                    {
+                        <select @bind="_adminPlayTeamId">
+                            @foreach (var team in _teams) { <option value="@team.TeamId">@team.Name</option> }
+                        </select>
+                        <input @bind="_adminPlayName" placeholder="Tên admin trong game" />
+                        <button class="primary-button small" disabled="@_isActionSubmitting" @onclick="JoinAdminAsPlayer">VÀO CHƠI</button>
+                    }
+                </div>
             }
         </div>
 
@@ -284,7 +301,7 @@
         @if (IsAdmin && validation.CanStart && Room?.Status == RoomStatus.Lobby)
         {
             <div class="admin-start-bar">
-                <button class="primary-button start-match-btn"
+                <button class="primary-button start-match-btn" data-testid="admin-start-match"
                         disabled="@_isActionSubmitting"
                         @onclick="StartMatch">
                     🚀 BẮT ĐẦU TRẬN ĐẤU (3S)
@@ -340,7 +357,7 @@
                         <small class="ready-status-desc">Bấm sẵn sàng khi bạn đã chọn xong đội và ngoại hình.</small>
                     }
                 </div>
-                <button class="ready-toggle-btn @(localPlayer.IsReady ? "unready" : "ready")"
+                <button class="ready-toggle-btn @(localPlayer.IsReady ? "unready" : "ready")" data-testid="player-ready-toggle"
                         disabled="@_isActionSubmitting"
                         @onclick="ToggleMyReady">
                     @(localPlayer.IsReady ? "✕ HỦY SẴN SÀNG" : "✓ TÔI SẴN SÀNG")
@@ -483,6 +500,8 @@
     private string? _avatarActionError;
     private string? _readyResetNotice;
     private bool _isActionSubmitting;
+    private string? _adminPlayTeamId;
+    private string _adminPlayName = "Quản trị viên";
 
     protected override void OnParametersSet()
     {
@@ -1130,6 +1149,48 @@
             }
             StateHasChanged();
         });
+    }
+
+    private async Task ToggleAdminCanPlay()
+    {
+        if (Connection is null || Room is null || string.IsNullOrWhiteSpace(AdminToken)) return;
+        _isActionSubmitting = true;
+        try
+        {
+            var result = await Connection.AdminSetCanPlayAsync(new AdminSetCanPlayRequest(Room.RoomId, AdminToken, !Room.AdminCanPlay, Guid.NewGuid().ToString("N")));
+            if (result.Success) Room = Room with { AdminCanPlay = result.AdminCanPlay };
+            else _teamActionError = result.ErrorCode;
+        }
+        finally { _isActionSubmitting = false; }
+    }
+
+    private async Task ToggleEndOnFirstFinish()
+    {
+        if (Connection is null || Room is null || string.IsNullOrWhiteSpace(AdminToken)) return;
+        _isActionSubmitting = true;
+        try
+        {
+            var result = await Connection.AdminSetEndOnFirstFinishAsync(new AdminSetEndOnFirstFinishRequest(Room.RoomId, AdminToken, !Room.EndOnFirstFinish, Guid.NewGuid().ToString("N")));
+            if (result.Success) Room = Room with { EndOnFirstFinish = result.EndOnFirstFinish };
+            else _teamActionError = result.ErrorCode;
+        }
+        finally { _isActionSubmitting = false; }
+    }
+
+    private async Task JoinAdminAsPlayer()
+    {
+        if (Connection is null || Room is null || string.IsNullOrWhiteSpace(AdminToken) || string.IsNullOrWhiteSpace(_adminPlayTeamId)) return;
+        _isActionSubmitting = true;
+        try
+        {
+            var result = await Connection.AdminJoinAsPlayerAsync(new AdminJoinAsPlayerRequest(Room.RoomId, AdminToken, _adminPlayTeamId, _adminPlayName, "quang", Guid.NewGuid().ToString("N")));
+            if (result.Success && result.PlayerId is not null)
+            {
+                _players.Add(new PlayerSnapshot(result.PlayerId, _adminPlayName, _adminPlayTeamId, "quang", "#deb783", false, true, true));
+            }
+            else _teamActionError = result.ErrorCode;
+        }
+        finally { _isActionSubmitting = false; }
     }
 
     private async Task StartMatch()

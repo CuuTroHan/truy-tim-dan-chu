@@ -14,7 +14,8 @@ public sealed record InteractRequest(
     string RoomId,
     string PlayerId,
     string ObjectId,
-    string CommandId
+    string CommandId,
+    string? MatchId = null
 );
 
 public sealed record InteractResponse(

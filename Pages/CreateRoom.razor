@@ -15,13 +15,13 @@
 
         <div class="form-group">
             <label for="room-name">Tên phòng thi đấu</label>
-            <input id="room-name" type="text" maxlength="50" @bind="_roomName" placeholder="VD: Cuộc thi Dân chủ 2026" />
+            <input id="room-name" data-testid="create-room-name" type="text" maxlength="50" @bind="_roomName" placeholder="VD: Cuộc thi Dân chủ 2026" />
             <small>Từ 3 đến 50 ký tự.</small>
         </div>
 
         <div class="form-group">
             <label for="room-timelimit">Thời gian tối đa (phút)</label>
-            <input id="room-timelimit" type="number" min="1" max="120" @bind="_timeLimitMinutes" />
+            <input id="room-timelimit" data-testid="create-room-time-limit" type="number" min="1" max="120" @bind="_timeLimitMinutes" />
             <small>Mặc định 15 phút (từ 1 đến 120 phút).</small>
         </div>
 
@@ -37,7 +37,7 @@
         </div>
 
         <div class="create-room-actions">
-            <button class="primary-button" disabled="@_submitting" @onclick="HandleCreateRoom">
+            <button class="primary-button" data-testid="create-room-submit" disabled="@_submitting" @onclick="HandleCreateRoom">
                 @(_submitting ? "ĐANG TẠO PHÒNG…" : "XÁC NHẬN TẠO PHÒNG →")
             </button>
         </div>
@@ -48,7 +48,7 @@
             <div class="success-badge">✦ PHÒNG ĐÃ KHỞI TẠO THÀNH CÔNG</div>
             <div class="room-code-display">
                 <span class="code-label">MÃ PHÒNG THI ĐẤU</span>
-                <strong class="code-value">@_createdRoom.RoomCode</strong>
+                <strong class="code-value" data-testid="room-code">@_createdRoom.RoomCode</strong>
                 <small>Chia sẻ mã này cho người chơi để cùng tham gia</small>
             </div>
 

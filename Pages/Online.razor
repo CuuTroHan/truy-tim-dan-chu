@@ -5,10 +5,11 @@
 @implements IAsyncDisposable
 @inject IConfiguration Configuration
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Chơi online — Truy tìm Dân chủ</PageTitle>
 
-@if (_currentRoom?.Status == RoomStatus.Playing && _connection is not null)
+@if (_currentRoom?.Status is RoomStatus.Playing or RoomStatus.Paused && _connection is not null)
 {
     <MultiplayerGameView Connection="_connection"
                          Room="_currentRoom"
@@ -18,6 +19,33 @@
                          IsAdmin="_isAdmin"
                          AdminToken="@_adminToken"
                          OnLeaveMatch="LeaveLobby" />
+}
+else if (_currentRoom?.Status == RoomStatus.Finished && _matchResults is not null)
+{
+    <main class="online-shell">
+        <section class="online-card results-card" aria-labelledby="results-title">
+            <div class="modal-kicker">KẾT QUẢ TRẬN</div>
+            <h1 id="results-title">@MatchReasonText(_matchResults.EndReason)</h1>
+            <p>Thời điểm máy chủ kết thúc: @_matchResults.FinishedAtUtc.ToLocalTime().ToString("HH:mm:ss")</p>
+            <div class="results-list">
+                @foreach (var team in _matchResults.Teams)
+                {
+                    <div class="result-row">
+                        <span class="result-rank">@(team.Rank?.ToString() ?? "—")</span>
+                        <span class="team-swatch" style="background:@team.TeamColor"></span>
+                        <strong>@team.TeamName</strong>
+                        <span>@ResultStatusText(team.Status)</span>
+                        <span>@(team.ElapsedMilliseconds is null ? "—" : $"{team.ElapsedMilliseconds.Value / 1000d:0.000}s")</span>
+                    </div>
+                }
+            </div>
+            @if (_isAdmin)
+            {
+                <button class="primary-button" @onclick="StartNewMatchAsync">LƯỢT THI MỚI</button>
+            }
+            <div class="online-actions"><button class="secondary-button" @onclick="LeaveLobby">VỀ PHÒNG CHỜ</button></div>
+        </section>
+    </main>
 }
 else
 {
@@ -53,10 +81,10 @@ else
                 else
                 {
                     <div class="online-nav-tabs">
-                        <button class="tab-button @(_activeTab == "create" ? "active" : "")" @onclick='() => _activeTab = "create"'>
+                        <button class="tab-button @(_activeTab == "create" ? "active" : "")" data-testid="online-create-tab" @onclick='() => _activeTab = "create"'>
                             TẠO PHÒNG MỚI
                         </button>
-                        <button class="tab-button @(_activeTab == "join" ? "active" : "")" @onclick='() => _activeTab = "join"'>
+                        <button class="tab-button @(_activeTab == "join" ? "active" : "")" data-testid="online-join-tab" @onclick='() => _activeTab = "join"'>
                             VÀO PHÒNG BẰNG MÃ
                         </button>
                     </div>
@@ -106,6 +134,10 @@ else
     private bool _isAdmin;
     private string? _adminToken;
     private string? _kickedNotification;
+    private MatchResultsSnapshot? _matchResults;
+    private string? _reconnectRoomCode;
+    private string? _reconnectToken;
+    private CancellationTokenSource? _heartbeatCts;
 
     protected override async Task OnInitializedAsync()
     {
@@ -124,6 +156,14 @@ else
         _connection.Changed += ConnectionChanged;
         _connection.KickedFromRoom += OnKickedFromRoom;
         _connection.MatchStarted += OnMatchStarted;
+        _connection.MatchFinished += OnMatchFinished;
+        _connection.MatchEnded += OnMatchEnded;
+        _connection.RoomClosed += OnRoomClosed;
+        _connection.AdminSessionSuperseded += OnAdminSessionSuperseded;
+        _connection.MatchPaused += OnMatchPaused;
+        _connection.MatchResumed += OnMatchResumed;
+        _connection.RoomStateUpdated += OnRoomStateUpdated;
+        _connection.PublicProgressUpdated += OnPublicProgressUpdated;
         _connection.PlayerJoined += OnPlayerJoined;
         _connection.PlayerLeft += OnPlayerLeft;
         _connection.PlayerAvatarChanged += OnPlayerAvatarChanged;
@@ -132,8 +172,12 @@ else
         _connection.TeamUpdated += OnTeamUpdated;
         _connection.TeamRemoved += OnTeamRemoved;
         _connection.TeamsReordered += OnTeamsReordered;
+        _connection.Reconnected += OnReconnected;
+        _connection.SessionSuperseded += OnSessionSuperseded;
 
         await _connection.ConnectAsync();
+        await TryResumeStoredAdminAsync();
+        await TryResumeStoredPlayerAsync();
     }
 
     private void OnMatchStarted(MatchStartedEvent ev)
@@ -142,9 +186,71 @@ else
         {
             if (_currentRoom is not null)
             {
-                _currentRoom = _currentRoom with { Status = RoomStatus.Playing, MatchId = ev.MatchId };
+                _currentRoom = _currentRoom with { Status = RoomStatus.Playing, MatchId = ev.MatchId, Clock = ev.Clock };
             }
             StateHasChanged();
+        });
+    }
+
+    private void OnMatchFinished(MatchFinishedEvent ev)
+    {
+        InvokeAsync(() =>
+        {
+            _matchResults = ev.Results;
+            if (_currentRoom is not null)
+                _currentRoom = _currentRoom with { Status = RoomStatus.Finished, MatchFinishedAtUtc = ev.FinishedAtUtc, MatchEndReason = ev.Reason };
+            StateHasChanged();
+        });
+    }
+
+    private void OnMatchEnded(MatchEndedEvent ev) => OnMatchFinished(new MatchFinishedEvent(ev.MatchId, ev.EndedAtUtc, ev.Reason, ev.Results));
+    private void OnRoomClosed(RoomClosedEvent ev)
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (_currentRoom is not null) _currentRoom = _currentRoom with { Status = RoomStatus.Closed, ClosedAtUtc = ev.ClosedAtUtc };
+            _kickedNotification = "Phòng đã đóng: " + (ev.Reason ?? "Quản trị viên đã đóng phòng.");
+            _ = RemoveStorageAsync("ttdc_admin_room");
+            _ = RemoveStorageAsync("ttdc_admin_token");
+            StateHasChanged();
+        });
+    }
+
+    private async void OnAdminSessionSuperseded(AdminSessionSupersededEvent ev)
+    {
+        if (_currentRoom?.RoomId != ev.RoomId) return;
+        _isAdmin = false;
+        _adminToken = null;
+        await RemoveStorageAsync("ttdc_admin_token");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnMatchPaused(MatchPausedEvent ev) => InvokeAsync(StateHasChanged);
+    private void OnMatchResumed(MatchResumedEvent ev) => InvokeAsync(StateHasChanged);
+
+    private void OnRoomStateUpdated(RoomSnapshot snapshot)
+    {
+        InvokeAsync(() => { _currentRoom = snapshot; StateHasChanged(); });
+    }
+
+    private void OnPublicProgressUpdated(PublicProgressSnapshot snapshot) => InvokeAsync(StateHasChanged);
+
+    private async void OnReconnected()
+    {
+        try { await TryResumeStoredAdminAsync(); await TryResumeStoredPlayerAsync(); }
+        catch { }
+    }
+
+    private void OnSessionSuperseded(SessionSupersededEvent ev)
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (_myPlayerId == ev.PlayerId)
+            {
+                _kickedNotification = "Phiên kết nối cũ đã bị thay thế bởi một tab khác.";
+                ClearLocalRoom();
+                StateHasChanged();
+            }
         });
     }
 
@@ -205,12 +311,7 @@ else
     {
         InvokeAsync(() =>
         {
-            _currentRoom = null;
-            _currentPlayers = [];
-            _currentTeams = [];
-            _myPlayerId = null;
-            _isAdmin = false;
-            _adminToken = null;
+            ClearLocalRoom();
             _kickedNotification = string.IsNullOrEmpty(ev.Reason)
                 ? "Bạn đã bị Quản trị viên mời ra khỏi phòng."
                 : $"Bạn đã bị Quản trị viên mời ra khỏi phòng. Lý do: {ev.Reason}";
@@ -218,38 +319,191 @@ else
         });
     }
 
-    private void HandleRoomCreated(CreateRoomResponse res)
+    private async Task HandleRoomCreated(CreateRoomResponse res)
     {
         _currentRoom = res.Snapshot;
+        _matchResults = null;
         _isAdmin = true;
         _adminToken = res.AdminToken;
         _myPlayerId = "admin";
         _currentPlayers = [];
         _currentTeams = [];
+        await SaveStorageAsync("ttdc_admin_room", res.RoomId);
+        await SaveStorageAsync("ttdc_admin_token", res.AdminToken);
     }
 
-    private void HandleRoomJoined(JoinRoomResponse res)
+    private async Task HandleRoomJoined(JoinRoomResponse res)
     {
         _currentRoom = res.Room;
+        _matchResults = null;
         _isAdmin = false;
         _adminToken = null;
         _myPlayerId = res.PlayerId;
         _currentPlayers = res.Players ?? [];
         _currentTeams = res.Teams ?? [];
+        _reconnectRoomCode = res.Room?.RoomCode;
+        _reconnectToken = res.ReconnectToken;
+        await SaveStorageAsync("ttdc_player_room", _reconnectRoomCode);
+        await SaveStorageAsync("ttdc_player_id", _myPlayerId);
+        await SaveStorageAsync("ttdc_player_token", _reconnectToken);
+        StartHeartbeat();
     }
 
     private void LeaveLobby()
     {
+        ClearLocalRoom();
+        _ = ClearPlayerStorageAsync();
+    }
+
+    private void ClearLocalRoom()
+    {
         _currentRoom = null;
+        _matchResults = null;
         _currentPlayers = [];
         _currentTeams = [];
         _myPlayerId = null;
         _isAdmin = false;
         _adminToken = null;
+        _reconnectRoomCode = null;
+        _reconnectToken = null;
+        StopHeartbeat();
+    }
+
+    private async Task TryResumeStoredPlayerAsync()
+    {
+        if (_connection is null || _connection.State != OnlineConnectionState.Connected) return;
+        var roomCode = await ReadStorageAsync("ttdc_player_room");
+        var playerId = await ReadStorageAsync("ttdc_player_id");
+        var token = await ReadStorageAsync("ttdc_player_token");
+        if (string.IsNullOrWhiteSpace(roomCode) || string.IsNullOrWhiteSpace(playerId) || string.IsNullOrWhiteSpace(token)) return;
+
+        var response = await _connection.ResumePlayerAsync(new ResumePlayerRequest(roomCode, playerId, token));
+        if (!response.Success || response.Room is null || response.PlayerId is null)
+        {
+            if (response.ErrorCode is RoomErrorCodes.ReconnectExpired or RoomErrorCodes.SessionRevoked or RoomErrorCodes.InvalidReconnectToken)
+                await ClearPlayerStorageAsync();
+            return;
+        }
+
+        _currentRoom = response.Room;
+        _matchResults = response.Results;
+        _myPlayerId = response.PlayerId;
+        _isAdmin = false;
+        _adminToken = null;
+        _currentPlayers = response.Players?.ToList() ?? [];
+        _currentTeams = response.Teams?.ToList() ?? [];
+        _reconnectRoomCode = response.Room.RoomCode;
+        _reconnectToken = response.ReconnectToken;
+        await SaveStorageAsync("ttdc_player_token", response.ReconnectToken);
+        StartHeartbeat();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task StartNewMatchAsync()
+    {
+        if (!_isAdmin || _currentRoom is null || string.IsNullOrWhiteSpace(_adminToken)) return;
+        var response = await _connection!.AdminNewMatchAsync(
+            new AdminNewMatchRequest(_currentRoom.RoomId, _adminToken, Guid.NewGuid().ToString("N")));
+        if (response.Success && response.Room is not null)
+        {
+            _currentRoom = response.Room;
+            _matchResults = null;
+            _currentPlayers = response.Players?.ToList() ?? [];
+            _currentTeams = response.Teams?.ToList() ?? [];
+            await InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            _kickedNotification = $"Không thể tạo lượt thi mới: {response.ErrorCode}";
+        }
+    }
+
+    private void StartHeartbeat()
+    {
+        StopHeartbeat();
+        if (_connection is null || _isAdmin || string.IsNullOrWhiteSpace(_myPlayerId)) return;
+        _heartbeatCts = new CancellationTokenSource();
+        _ = HeartbeatLoopAsync(_heartbeatCts.Token);
+    }
+
+    private async Task HeartbeatLoopAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                if (_connection?.State == OnlineConnectionState.Connected && _currentRoom is not null && _myPlayerId is not null)
+                    await _connection.HeartbeatAsync(new HeartbeatRequest(_currentRoom.RoomId, _myPlayerId));
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void StopHeartbeat()
+    {
+        _heartbeatCts?.Cancel();
+        _heartbeatCts?.Dispose();
+        _heartbeatCts = null;
+    }
+
+    private async Task SaveStorageAsync(string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) await JS.InvokeVoidAsync("sessionStorage.setItem", key, value);
+    }
+
+    private async Task<string?> ReadStorageAsync(string key)
+    {
+        try { return await JS.InvokeAsync<string?>("sessionStorage.getItem", key); }
+        catch { return null; }
+    }
+
+    private async Task RemoveStorageAsync(string key)
+    {
+        try { await JS.InvokeVoidAsync("sessionStorage.removeItem", key); }
+        catch { }
+    }
+
+    private async Task ClearPlayerStorageAsync()
+    {
+        await RemoveStorageAsync("ttdc_player_room");
+        await RemoveStorageAsync("ttdc_player_id");
+        await RemoveStorageAsync("ttdc_player_token");
+    }
+
+    private async Task TryResumeStoredAdminAsync()
+    {
+        if (_connection is null || _connection.State != OnlineConnectionState.Connected) return;
+        var roomId = await ReadStorageAsync("ttdc_admin_room");
+        var token = await ReadStorageAsync("ttdc_admin_token");
+        if (string.IsNullOrWhiteSpace(roomId) || string.IsNullOrWhiteSpace(token)) return;
+        var response = await _connection.ResumeAdminAsync(new ResumeAdminRequest(roomId, token));
+        if (!response.Success || response.Snapshot is null)
+        {
+            if (response.ErrorCode is RoomErrorCodes.RoomClosed or RoomErrorCodes.AdminSessionRevoked or RoomErrorCodes.UnauthorizedAdmin)
+            {
+                await RemoveStorageAsync("ttdc_admin_room");
+                await RemoveStorageAsync("ttdc_admin_token");
+            }
+            return;
+        }
+        _isAdmin = true;
+        _adminToken = response.AdminToken;
+        _currentRoom = response.Snapshot.Room;
+        _currentPlayers = response.Snapshot.Players.ToList();
+        _currentTeams = response.Snapshot.Teams.ToList();
+        _matchResults = response.Snapshot.Results;
+        if (!string.IsNullOrWhiteSpace(response.AdminToken)) await SaveStorageAsync("ttdc_admin_token", response.AdminToken);
+        await InvokeAsync(StateHasChanged);
     }
 
     private void ConnectionChanged() => _ = InvokeAsync(() => { if (!_disposed) StateHasChanged(); });
-    private Task Connect() => _connection!.ConnectAsync();
+    private async Task Connect()
+    {
+        await _connection!.ConnectAsync();
+        await TryResumeStoredAdminAsync();
+        await TryResumeStoredPlayerAsync();
+    }
     private void Reload() => Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
 
     public async ValueTask DisposeAsync()
@@ -259,6 +513,14 @@ else
         _connection.Changed -= ConnectionChanged;
         _connection.KickedFromRoom -= OnKickedFromRoom;
         _connection.MatchStarted -= OnMatchStarted;
+        _connection.MatchFinished -= OnMatchFinished;
+        _connection.MatchEnded -= OnMatchEnded;
+        _connection.RoomClosed -= OnRoomClosed;
+        _connection.AdminSessionSuperseded -= OnAdminSessionSuperseded;
+        _connection.MatchPaused -= OnMatchPaused;
+        _connection.MatchResumed -= OnMatchResumed;
+        _connection.RoomStateUpdated -= OnRoomStateUpdated;
+        _connection.PublicProgressUpdated -= OnPublicProgressUpdated;
         _connection.PlayerJoined -= OnPlayerJoined;
         _connection.PlayerLeft -= OnPlayerLeft;
         _connection.PlayerAvatarChanged -= OnPlayerAvatarChanged;
@@ -267,6 +529,25 @@ else
         _connection.TeamUpdated -= OnTeamUpdated;
         _connection.TeamRemoved -= OnTeamRemoved;
         _connection.TeamsReordered -= OnTeamsReordered;
+        _connection.Reconnected -= OnReconnected;
+        _connection.SessionSuperseded -= OnSessionSuperseded;
+        StopHeartbeat();
         await _connection.DisposeAsync();
     }
+
+    private static string MatchReasonText(MatchEndReason reason) => reason switch
+    {
+        MatchEndReason.Timeout => "Trận đã hết giờ",
+        MatchEndReason.AllTeamsFinished => "Tất cả đội đã hoàn thành",
+        MatchEndReason.FirstTeamFinished => "Đội đầu tiên đã hoàn thành",
+        _ => "Trận đã kết thúc"
+    };
+
+    private static string ResultStatusText(TeamResultStatus status) => status switch
+    {
+        TeamResultStatus.Completed => "Hoàn thành",
+        TeamResultStatus.TimedOut => "Hết giờ",
+        TeamResultStatus.EndedEarly => "Kết thúc sớm",
+        _ => "Bỏ cuộc"
+    };
 }

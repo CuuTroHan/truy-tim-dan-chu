@@ -43,6 +43,7 @@
                  aria-checked="@isSelected"
                  tabindex="0"
                  data-avatar-id="@avatar.Id"
+                 data-testid="avatar-@avatar.Id"
                  @onclick="() => HandleSelect(avatar.Id)"
                  @onkeydown="@(async e => { if (e.Key is "Enter" or " ") await HandleSelect(avatar.Id); })">
 

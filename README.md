@@ -88,3 +88,19 @@ Integration test chạy Kestrel trên cổng loopback ngẫu nhiên với client
 Tham khảo API: [SignalR .NET client — Microsoft Learn](https://learn.microsoft.com/en-us/aspnet/core/signalr/dotnet-client?view=aspnetcore-10.0).
 
 Khi rebuild client trong lúc dev server đang chạy và thấy runtime fingerprint trả 404, dừng rồi chạy lại tiến trình client và hard reload Chrome. Trang cần nạp `TruyTimDanChu.styles.css` để áp dụng CSS riêng của các component.
+
+## Phase 40 — publish và vận hành Windows
+
+Publish tái lập (script chỉ xóa thư mục con dưới `artifacts`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\publish-windows.ps1 -Runtime win-x64
+```
+
+Kết quả nằm trong `artifacts\publish\server` và `artifacts\publish\manifest.json`. Copy `Server\appsettings.Production.example.json` thành file cấu hình riêng ngoài publish, thay hostname/connection string; certificate HTTPS và password phải lấy từ Windows Certificate Store hoặc environment (`ASPNETCORE_Kestrel__Certificates__Default__Path/Password`), tuyệt đối không commit.
+
+SQLite production đặt ngoài thư mục binary, ví dụ `C:\ProgramData\TruyTimDanChu\data`. Trước deploy: kiểm tra `/ready`, dừng/kết thúc match active theo policy, tạo backup timestamp và thử mở/query backup. Sau deploy/restart kiểm tra `/health`, `/ready`, `/`, SignalR handshake và `/api/rooms/.../matches`. Match Active/Paused khi process restart được đánh dấu `Interrupted`; history Completed vẫn giữ nguyên.
+
+Có thể chạy binary từ publish bằng `dotnet TruyTimDanChu.Server.dll --environment Production` với `ASPNETCORE_URLS`/certificate đã cấu hình. Khi dùng Windows Service, service account chỉ cần read/execute `Program Files\TruyTimDanChu\app` và read/write `ProgramData\TruyTimDanChu\data|logs|backup`; stop/start không xóa data. Rollback: stop service, đổi về thư mục binary version trước, chỉ restore DB backup khi schema tương thích, start và kiểm tra `/ready`/history.
+
+Publish smoke tối thiểu: poll `/health` và `/ready`, GET `index.html`, kết nối `wss://<host>/hubs/room`, thử handshake đúng/sai version, tạo room/join, restart rồi xem history. Không coi publish thành công là Phase 40 PASS nếu chưa có hai máy client HTTPS, cache/version mismatch, full journey và biên bản 14 tiêu chí.

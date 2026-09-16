@@ -23,6 +23,7 @@ public sealed class MultiplayerSession : IGameSession
     public string RoomId { get; set; } = string.Empty;
     public Func<PlayerMovementInput, Task<MovementAck>>? OnSendMovement { get; set; }
     public Func<InteractRequest, Task<InteractResponse>>? OnInteract { get; set; }
+    public Action<string>? PuzzleInteractionRequested { get; set; }
     public string MatchId { get; private set; } = string.Empty;
     public string TeamId { get; private set; } = string.Empty;
     public string TeamName { get; private set; } = string.Empty;
@@ -63,11 +64,14 @@ public sealed class MultiplayerSession : IGameSession
     public int[] DraftSequence => _engine.DraftSequence;
     public int[] RiverSigns => _engine.RiverSigns;
     public List<int> FinaleSequence => _engine.FinaleSequence;
-    public int ReturnStep => _engine.ReturnStep;
-    public bool DraftDone => _engine.DraftDone;
-    public bool RiverDone => _engine.RiverDone;
-    public bool NewsDone => _engine.NewsDone;
-    public int NewsNoise => _engine.NewsNoise;
+    public int ReturnStep => _progress.ReturnStep;
+    public bool FinaleOrderCompleted => _progress.FinaleOrderCompleted;
+    public bool FinaleDone => _progress.FinaleDone;
+    public DateTimeOffset? FinishedAtUtc => _progress.FinishedAtUtc;
+    public bool DraftDone => _progress.DraftDone || _engine.DraftDone;
+    public bool RiverDone => _progress.RiverDone || _engine.RiverDone;
+    public bool NewsDone => _progress.NewsDone || _engine.NewsDone;
+    public int NewsNoise => _progress.NewsNoise;
     public bool UiDirty => _engine.UiDirty;
     public bool SaveDirty => false;
 
@@ -124,10 +128,29 @@ public sealed class MultiplayerSession : IGameSession
         for (int i = 0; i < snapshot.Progress.Clues.Length && i < _progress.Clues.Length; i++)
             _progress.Clues[i] = snapshot.Progress.Clues[i];
         _progress.Version = snapshot.Progress.Version;
+        _progress.WrongAnswerCount = snapshot.Progress.WrongAnswerCount;
+        _progress.DraftDone = snapshot.Progress.DraftDone;
+        _progress.DraftFailures = snapshot.Progress.DraftFailures;
+        _progress.RiverDone = snapshot.Progress.RiverDone;
+        _progress.RiverFailures = snapshot.Progress.RiverFailures;
+        _progress.NewsDone = snapshot.Progress.NewsDone;
+        _progress.NewsNoise = snapshot.Progress.NewsNoise;
+        _progress.FinaleOrderCompleted = snapshot.Progress.FinaleOrderCompleted;
+        _progress.ReturnStep = snapshot.Progress.ReturnStep;
+        _progress.FinaleDone = snapshot.Progress.FinaleDone;
+        _progress.FinishedAtUtc = snapshot.Progress.FinishedAtUtc;
+        if (snapshot.Progress.Lore is not null)
+        {
+            for (int i = 0; i < snapshot.Progress.Lore.Length && i < _progress.Lore.Length; i++)
+                _progress.Lore[i] = snapshot.Progress.Lore[i];
+        }
+        _progress.ChapterTimings.Clear();
+        if (snapshot.Progress.ChapterTimings is not null)
+            _progress.ChapterTimings.AddRange(snapshot.Progress.ChapterTimings);
 
         if (_engine.Chapter != snapshot.Progress.Chapter)
         {
-            _engine.PresenterJump(snapshot.Progress.Chapter);
+            _engine.ApplyServerChapter(snapshot.Progress.Chapter);
         }
         for (int i = 0; i < snapshot.Progress.Spoken.Length && i < _engine.Spoken.Length; i++)
             _engine.Spoken[i] = snapshot.Progress.Spoken[i];
@@ -135,6 +158,15 @@ public sealed class MultiplayerSession : IGameSession
             _engine.Lamps[i] = snapshot.Progress.Lamps[i];
         for (int i = 0; i < snapshot.Progress.Clues.Length && i < _engine.Clues.Length; i++)
             _engine.Clues[i] = snapshot.Progress.Clues[i];
+        _engine.DraftDone = snapshot.Progress.DraftDone || _engine.DraftDone;
+        _engine.RiverDone = snapshot.Progress.RiverDone || _engine.RiverDone;
+        _engine.NewsDone = snapshot.Progress.NewsDone || _engine.NewsDone;
+        _engine.NewsNoise = snapshot.Progress.NewsNoise;
+        if (snapshot.Progress.Lore is not null)
+        {
+            for (int i = 0; i < snapshot.Progress.Lore.Length && i < _engine.Lore.Length; i++)
+                _engine.Lore[i] = snapshot.Progress.Lore[i];
+        }
     }
 
     public void UpdateTeammatePosition(string playerId, float x, float y, int facing, int walking, int sequence = 0, long timestampMs = 0)
@@ -178,7 +210,7 @@ public sealed class MultiplayerSession : IGameSession
                 _lastMovementSentTime = timestampMs;
                 var seq = ++_sequence;
                 _reconciler.RecordInput(seq, keys, dt, timestampMs);
-                var input = new PlayerMovementInput(RoomId, _player.PlayerId, keys, seq, (long)timestampMs);
+                var input = new PlayerMovementInput(RoomId, _player.PlayerId, keys, seq, (long)timestampMs, MatchId);
                 if (OnSendMovement is not null)
                 {
                     _ = Task.Run(async () =>
@@ -207,7 +239,7 @@ public sealed class MultiplayerSession : IGameSession
                 _lastKeys = 0;
                 var seq = ++_sequence;
                 _reconciler.RecordInput(seq, 0, dt, timestampMs);
-                var input = new PlayerMovementInput(RoomId, _player.PlayerId, 0, seq, (long)timestampMs);
+                var input = new PlayerMovementInput(RoomId, _player.PlayerId, 0, seq, (long)timestampMs, MatchId);
                 if (OnSendMovement is not null)
                 {
                     _ = Task.Run(async () =>
@@ -264,9 +296,12 @@ public sealed class MultiplayerSession : IGameSession
     {
         if (Panel != Panel.None) return;
 
-        var target = TownCollision.Places
-            .Select(p => (Id: p.Key, p.Value.X, p.Value.Y, p.Value.Kind, p.Value.Label,
-                Distance: MathF.Sqrt((_player.X - p.Value.X) * (_player.X - p.Value.X) + (_player.Y - p.Value.Y) * (_player.Y - p.Value.Y))))
+        var target = TownCollision.Places.Keys
+            .Select(id => {
+                var p = TownCollision.GetInteractionPlace(id, _progress.Chapter);
+                return (Id: id, p.X, p.Y, p.Kind, p.Label,
+                    Distance: MathF.Sqrt((_player.X - p.X) * (_player.X - p.X) + (_player.Y - p.Y) * (_player.Y - p.Y)));
+            })
             .Where(o => o.Distance <= TownCollision.MaxInteractionDistance)
             .OrderBy(o => o.Distance)
             .FirstOrDefault();
@@ -279,6 +314,31 @@ public sealed class MultiplayerSession : IGameSession
         }
 
         _engine.SetPosition(_player.X, _player.Y);
+        if (target.Id == "mirror_board" && _engine.Chapter == Chapter.Lights && _engine.Lamps.All(x => x))
+        {
+            PuzzleInteractionRequested?.Invoke(PuzzleIds.Mirrors);
+            return;
+        }
+        if (target.Id == "draft_board" && _engine.Chapter == Chapter.Draft)
+        {
+            PuzzleInteractionRequested?.Invoke(PuzzleIds.Draft);
+            return;
+        }
+        if (target.Id == "river_board" && _engine.Chapter == Chapter.River)
+        {
+            PuzzleInteractionRequested?.Invoke(PuzzleIds.River);
+            return;
+        }
+        if (target.Id == "news_board" && _engine.Chapter == Chapter.News)
+        {
+            PuzzleInteractionRequested?.Invoke(PuzzleIds.News);
+            return;
+        }
+        if (target.Id == "final_board" && _engine.Chapter == Chapter.Finale)
+        {
+            PuzzleInteractionRequested?.Invoke(PuzzleIds.Finale);
+            return;
+        }
         if (_engine.Chapter == Chapter.Opening && target.Id is "trong" or "final_board" or "kieu_anh")
         {
             _engine.ShowDialogue(
@@ -290,13 +350,13 @@ public sealed class MultiplayerSession : IGameSession
         }
         else
         {
-            _engine.HandleObject(target.Id);
+            _engine.HandleObjectMultiplayer(target.Id);
         }
 
         if (OnInteract is not null && !string.IsNullOrEmpty(RoomId))
         {
             var commandId = Guid.NewGuid().ToString("N");
-            var req = new InteractRequest(RoomId, _player.PlayerId, target.Id, commandId);
+            var req = new InteractRequest(RoomId, _player.PlayerId, target.Id, commandId, MatchId);
             _ = Task.Run(async () =>
             {
                 var response = await OnInteract(req);
@@ -313,10 +373,13 @@ public sealed class MultiplayerSession : IGameSession
     public void ClosePanel() => _engine.ClosePanel();
     public void TurnMirror(int index) => _engine.TurnMirror(index);
     public void CheckMirrors() => _engine.CheckMirrors();
+    public void ResetMirrors() => Array.Clear(_engine.Mirrors);
+    public void ResetDraft() => new int[] { 2, 0, 5, 1, 4, 3 }.CopyTo(_engine.DraftSequence, 0);
     public void MoveDraft(int index, int direction) => _engine.MoveDraft(index, direction);
     public void CheckDraft() => _engine.CheckDraft();
     public void TurnRiver(int index) => _engine.TurnRiver(index);
     public void CheckRiver() => _engine.CheckRiver();
+    public void ResetRiver() => Array.Clear(_engine.RiverSigns);
     public void ChooseNews(int option) => _engine.ChooseNews(option);
     public void AddFinalePiece(int shardIndex) => _engine.AddFinalePiece(shardIndex);
     public void ResetFinaleSequence() => _engine.FinaleSequence.Clear();

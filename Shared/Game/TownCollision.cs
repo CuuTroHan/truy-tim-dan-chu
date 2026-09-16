@@ -42,6 +42,25 @@ public static class TownCollision
         ["lore3"] = (450, 80, "book", "Cơ sở pháp lý")
     };
 
+    public static (float X, float Y, string Kind, string Label) GetInteractionPlace(string objectId, Chapter chapter)
+    {
+        if (Places.TryGetValue(objectId, out var place))
+        {
+            var x = place.X;
+            var y = place.Y;
+            if (chapter > Chapter.Lights)
+            {
+                if (objectId == "phuong") { x = 505f; y = 154f; }
+                else if (objectId == "dung") { x = 758f; y = 318f; }
+                else if (objectId == "bao") { x = 259f; y = 537f; }
+                else if (objectId == "nam") { x = chapter == Chapter.River ? 875f : 541f; y = chapter == Chapter.River ? 333f : 340f; }
+            }
+            if (objectId == "han" && chapter >= Chapter.News) { x = 390f; y = 543f; }
+            return (x, y, place.Kind, place.Label);
+        }
+        return (0f, 0f, string.Empty, string.Empty);
+    }
+
     public static readonly (float X, float Y, float W, float H)[] Bounds =
     [
         (306f, 34f, 158f, 48f),   // tường thư viện

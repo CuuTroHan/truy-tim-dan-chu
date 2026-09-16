@@ -44,10 +44,14 @@ public sealed class TeamProgress
     public bool RiverDone { get; set; }
     public bool NewsDone { get; set; }
     public int NewsNoise { get; set; }
+    public bool FinaleOrderCompleted { get; set; }
+    public bool FinaleDone { get; set; }
+    public DateTimeOffset? FinishedAtUtc { get; set; }
     public int DraftFailures { get; set; }
     public int RiverFailures { get; set; }
+    public int WrongAnswerCount { get; set; }
+    public List<ChapterTiming> ChapterTimings { get; } = [];
     public int Version { get; set; } = 1;
-
     public int Shards => Chapter switch
     {
         Chapter.Opening or Chapter.Lights => 0,
@@ -73,11 +77,21 @@ public sealed class TeamProgress
         RiverDone = false;
         NewsDone = false;
         NewsNoise = 0;
+        FinaleOrderCompleted = false;
+        FinaleDone = false;
+        FinishedAtUtc = null;
         DraftFailures = 0;
         RiverFailures = 0;
+        WrongAnswerCount = 0;
+        ChapterTimings.Clear();
         Version = 1;
     }
 }
+
+public sealed record ChapterTiming(
+    Chapter Chapter,
+    DateTimeOffset CompletedAtUtc,
+    long ElapsedMilliseconds);
 
 /// <summary>
 /// Trạng thái giao diện cục bộ của từng client (không chia sẻ qua mạng cho đồng đội).

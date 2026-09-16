@@ -56,7 +56,11 @@ public sealed record RoomSnapshot(
     bool IsJoinLocked = false,
     bool IsRosterLocked = false,
     string? MatchId = null,
-    DateTimeOffset? MatchStartTimeUtc = null
+    DateTimeOffset? MatchStartTimeUtc = null,
+    MatchClockSnapshot? Clock = null,
+    DateTimeOffset? MatchFinishedAtUtc = null,
+    MatchEndReason? MatchEndReason = null,
+    DateTimeOffset? ClosedAtUtc = null
 );
 
 public sealed record TeamSnapshot(
@@ -66,7 +70,8 @@ public sealed record TeamSnapshot(
     string Color,
     int Capacity,
     int DisplayOrder,
-    int MemberCount = 0
+    int MemberCount = 0,
+    DateTimeOffset? FinishedAtUtc = null
 );
 
 public sealed record AdminAddTeamRequest(
@@ -171,6 +176,30 @@ public sealed record JoinRoomResponse(
     List<PlayerSnapshot>? Players,
     List<TeamSnapshot>? Teams = null
 );
+
+public sealed record ResumePlayerRequest(
+    string RoomCode,
+    string PlayerId,
+    string ReconnectToken
+);
+
+public sealed record ResumePlayerResponse(
+    bool Success,
+    string? ErrorCode,
+    string? PlayerId,
+    string? ReconnectToken,
+    RoomSnapshot? Room,
+    List<PlayerSnapshot>? Players,
+    List<TeamSnapshot>? Teams,
+    TeamGameStateSnapshot? TeamState,
+    PublicProgressSnapshot? PublicProgress,
+    IReadOnlyList<PuzzleReservationState>? Reservations = null,
+    MatchResultsSnapshot? Results = null
+);
+
+public sealed record HeartbeatRequest(string RoomId, string PlayerId);
+public sealed record HeartbeatResponse(bool Success, string? ErrorCode, DateTimeOffset ServerTimeUtc);
+public sealed record SessionSupersededEvent(string PlayerId);
 
 public sealed record AdminMovePlayerRequest(
     string RoomId,
@@ -314,6 +343,62 @@ public sealed record AdminStartMatchResponse(
     int RoomVersion
 );
 
+public sealed record AdminNewMatchRequest(string RoomId, string AdminToken, string CommandId);
+
+public sealed record AdminNewMatchResponse(
+    bool Success,
+    string? ErrorCode,
+    RoomSnapshot? Room,
+    IReadOnlyList<PlayerSnapshot>? Players,
+    IReadOnlyList<TeamSnapshot>? Teams
+);
+
+public sealed record AdminPauseMatchRequest(string RoomId, string AdminToken, string MatchId, string CommandId);
+public sealed record AdminResumeMatchRequest(string RoomId, string AdminToken, string MatchId, string CommandId);
+
+public sealed record MatchPausedEvent(string MatchId, DateTimeOffset PausedAtUtc, long ElapsedMilliseconds, long RemainingMilliseconds);
+public sealed record MatchResumedEvent(string MatchId, DateTimeOffset ResumedAtUtc, DateTimeOffset DeadlineUtc, long TotalPausedMilliseconds);
+public sealed record AdminPauseMatchResponse(bool Success, string? ErrorCode, MatchPausedEvent? Event);
+public sealed record AdminResumeMatchResponse(bool Success, string? ErrorCode, MatchResumedEvent? Event);
+
+public sealed record AdminEndMatchRequest(string RoomId, string AdminToken, string MatchId, string CommandId, string? Reason = null);
+public sealed record AdminCancelMatchRequest(string RoomId, string AdminToken, string? MatchId, string CommandId, string? Reason = null);
+public sealed record AdminCloseRoomRequest(string RoomId, string AdminToken, string CommandId, string? Reason = null);
+public sealed record MatchEndedEvent(string MatchId, DateTimeOffset EndedAtUtc, MatchEndReason Reason, MatchResultsSnapshot? Results);
+public sealed record RoomClosedEvent(string RoomId, DateTimeOffset ClosedAtUtc, string? Reason);
+public sealed record AdminActionResponse(bool Success, string? ErrorCode, RoomSnapshot? Room, MatchEndedEvent? Match, int RoomVersion);
+public sealed record AdminCloseRoomResponse(bool Success, string? ErrorCode, RoomSnapshot? Room, RoomClosedEvent? Event);
+
+public sealed record ResumeAdminRequest(string RoomId, string AdminToken);
+public sealed record AdminDashboardSnapshot(RoomSnapshot Room, IReadOnlyList<TeamSnapshot> Teams, IReadOnlyList<PlayerSnapshot> Players,
+    MatchClockSnapshot? Clock, PublicProgressSnapshot? PublicProgress, MatchResultsSnapshot? Results,
+    IReadOnlyList<PuzzleReservationState> Reservations, string? LinkedPlayerId = null);
+public sealed record ResumeAdminResponse(bool Success, string? ErrorCode, string? AdminToken, AdminDashboardSnapshot? Snapshot, string? PreviousConnectionId = null);
+public sealed record AdminSessionSupersededEvent(string RoomId);
+
+public sealed record LateJoinRequest(string RoomCode, string DisplayName, string TeamId, string AvatarId, string CommandId);
+public sealed record LateJoinResponse(bool Success, string? ErrorCode, string? PlayerId, string? ReconnectToken,
+    RoomSnapshot? Room, TeamGameStateSnapshot? TeamState, PublicProgressSnapshot? PublicProgress);
+
+public sealed record AdminSetCanPlayRequest(string RoomId, string AdminToken, bool AdminCanPlay, string CommandId);
+public sealed record AdminJoinAsPlayerRequest(string RoomId, string AdminToken, string TeamId, string DisplayName, string AvatarId, string CommandId);
+public sealed record AdminCanPlayResponse(bool Success, string? ErrorCode, RoomSnapshot? Room, PlayerSnapshot? Player, int RoomVersion);
+public sealed record AdminEndMatchResponse(bool Success, string? ErrorCode, RoomSnapshot? Room, MatchEndedEvent? Event);
+public sealed record AdminCancelMatchResponse(bool Success, string? ErrorCode, RoomSnapshot? Room, MatchEndedEvent? Event);
+public sealed record AdminSetCanPlayResponse(bool Success, string? ErrorCode, bool AdminCanPlay, int RoomVersion);
+public sealed record AdminJoinAsPlayerResponse(bool Success, string? ErrorCode, string? PlayerId, string? ReconnectToken, RoomSnapshot? Room, TeamGameStateSnapshot? TeamState);
+public sealed record AdminSetEndOnFirstFinishRequest(string RoomId, string AdminToken, bool EndOnFirstFinish, string CommandId);
+public sealed record AdminSetEndOnFirstFinishResponse(bool Success, string? ErrorCode, bool EndOnFirstFinish, int RoomVersion);
+
+public sealed record MatchHistoryRequest(string RoomId, string AdminToken, int PageSize = 20,
+    DateTimeOffset? CursorEndedAtUtc = null, string? CursorMatchId = null);
+public sealed record MatchHistoryItem(string MatchId, DateTimeOffset StartedAtUtc, DateTimeOffset? EndedAtUtc,
+    MatchEndReason EndReason, int TeamCount, int CompletedTeamCount);
+public sealed record MatchHistoryPage(IReadOnlyList<MatchHistoryItem> Items, DateTimeOffset? NextCursorEndedAtUtc,
+    string? NextCursorMatchId, bool HasMore);
+public sealed record MatchHistoryDetail(string RoomId, string MatchId, DateTimeOffset StartedAtUtc,
+    DateTimeOffset? EndedAtUtc, MatchEndReason EndReason, IReadOnlyList<TeamResultSnapshot> Teams);
+
 public sealed record CountdownStartedEvent(
     string MatchId,
     int CountdownSeconds,
@@ -335,7 +420,38 @@ public sealed record CountdownCanceledEvent();
 
 public sealed record MatchStartedEvent(
     string MatchId,
-    DateTimeOffset StartedAtUtc
+    DateTimeOffset StartedAtUtc,
+    MatchClockSnapshot? Clock = null
+);
+
+public enum MatchEndReason
+{
+    AllTeamsFinished,
+    Timeout,
+    AdminEnded,
+    Cancelled,
+    FirstTeamFinished,
+    Interrupted,
+    RoomClosed
+}
+
+public sealed record MatchClockSnapshot(
+    string MatchId,
+    DateTimeOffset StartedAtUtc,
+    DateTimeOffset DeadlineUtc,
+    DateTimeOffset ServerNowUtc,
+    long ElapsedMilliseconds,
+    long RemainingMilliseconds,
+    bool IsPaused,
+    DateTimeOffset? FinishedAtUtc = null,
+    MatchEndReason? EndReason = null
+);
+
+public sealed record MatchFinishedEvent(
+    string MatchId,
+    DateTimeOffset FinishedAtUtc,
+    MatchEndReason Reason,
+    MatchResultsSnapshot? Results = null
 );
 
 public static class RoomErrorCodes
@@ -376,4 +492,28 @@ public static class RoomErrorCodes
     public const string CountdownNotActive = "COUNTDOWN_NOT_ACTIVE";
     public const string CountdownActive = "COUNTDOWN_ACTIVE";
     public const string MatchPlaying = "MATCH_PLAYING";
+    public const string MatchTimedOut = "MATCH_TIMED_OUT";
+    public const string MatchFinished = "MATCH_FINISHED";
+    public const string MatchIdMismatch = "MATCH_ID_MISMATCH";
+    public const string InvalidReconnectToken = "INVALID_RECONNECT_TOKEN";
+    public const string ReconnectExpired = "RECONNECT_EXPIRED";
+    public const string SessionRevoked = "SESSION_REVOKED";
+    public const string ConnectionNotBound = "CONNECTION_NOT_BOUND";
+    public const string MatchPaused = "MATCH_PAUSED";
+    public const string MatchNotPaused = "MATCH_NOT_PAUSED";
+    public const string MatchAlreadyPaused = "MATCH_ALREADY_PAUSED";
+    public const string AdminNotBound = "ADMIN_NOT_BOUND";
+    public const string PersistenceUnavailable = "PERSISTENCE_UNAVAILABLE";
+    public const string InvalidCommandId = "INVALID_COMMAND_ID";
+    public const string LateJoinNotAllowedInState = "LATE_JOIN_NOT_ALLOWED_IN_STATE";
+    public const string AdminCanPlayDisabled = "ADMIN_CAN_PLAY_DISABLED";
+    public const string MatchCannotBeEnded = "MATCH_CANNOT_BE_ENDED";
+    public const string MatchCannotBeCancelled = "MATCH_CANNOT_BE_CANCELLED";
+    public const string RoomAlreadyClosed = "ROOM_ALREADY_CLOSED";
+    public const string CommandAlreadyApplied = "COMMAND_ALREADY_APPLIED";
+    public const string LateJoinDisabled = "LATE_JOIN_DISABLED";
+    public const string NoAvailableSlot = "NO_AVAILABLE_SLOT";
+    public const string TeamAlreadyFinished = "TEAM_ALREADY_FINISHED";
+    public const string AdminSessionRevoked = "ADMIN_SESSION_REVOKED";
+    public const string EndOnFirstFinishLocked = "END_ON_FIRST_FINISH_LOCKED";
 }

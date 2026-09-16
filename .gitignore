@@ -2,6 +2,8 @@
 bin/
 obj/
 dist/
+artifacts/
+Server/data/
 **/bin/
 **/obj/
 

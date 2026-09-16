@@ -74,15 +74,15 @@ public sealed class GameEngine
     public int[] DraftSequence { get; } = [2, 0, 5, 1, 4, 3];
     public int[] RiverSigns { get; } = [0, 0, 0, 0];
     public List<int> FinaleSequence { get; } = [];
-    public int ReturnStep { get; private set; }
-    public bool DraftDone { get; private set; }
-    public bool RiverDone { get; private set; }
-    public bool NewsDone { get; private set; }
+    public int ReturnStep { get; internal set; }
+    public bool DraftDone { get; internal set; }
+    public bool RiverDone { get; internal set; }
+    public bool NewsDone { get; internal set; }
     public bool Muted { get; set; }
     public int TextScale { get; set; } = 125;
     public void SetMuted(bool value) { Muted = value; SaveDirty = true; UiDirty = true; }
     public void SetTextScale(int value) { TextScale = Math.Clamp(value, 100, 150); SaveDirty = true; UiDirty = true; }
-    public int NewsNoise { get; private set; }
+    public int NewsNoise { get; internal set; }
     public int DraftFailures { get; private set; }
     public int RiverFailures { get; private set; }
     public string? Toast { get; private set; }
@@ -363,6 +363,94 @@ public sealed class GameEngine
         UiDirty = true;
     }
 
+    public void HandleObjectMultiplayer(string id)
+    {
+        if (id == "trong")
+        {
+            if (Chapter == Chapter.Finale) OpenPanel(Panel.Finale);
+            else if (Chapter == Chapter.Complete) ShowDialogue([new("Trọng", "Hòm vẫn trống, nhưng thị trấn thì không. Mỗi tiếng nói đều có đường đi.")]);
+            else ShowDialogue([new("Trọng", "Cứ theo Sổ Tiếng Nói. Khi đủ bốn mảnh, hãy quay lại đây.")]);
+            return;
+        }
+        if (id == "kieu_anh")
+        {
+            ShowDialogue([
+                new("Kiều Anh", Chapter == Chapter.Lights ? "Bốn người ở quảng trường phía tây đều có một ngọn đèn. Hãy lắng nghe họ." : "Nhìn vào cuốn sổ: quyền, tham gia, giám sát và phản hồi phải nối thành một vòng.")
+            ]);
+            return;
+        }
+        if (id == "ninh") { ShowDialogue([new("Ninh", "Lịch sử có nhiều mô hình dân chủ, mỗi mô hình đều có giới hạn. Hãy đọc các bảng trong thư viện để hiểu thêm.")]); return; }
+        if (id.StartsWith("lore") && int.TryParse(id[^1..], out var loreId))
+        {
+            ShowDialogue(loreId switch
+            {
+                0 => [new("Ninh", "Demos là nhân dân, kratos là quyền lực. Ở Athens cổ đại, nhiều người như phụ nữ, nô lệ và ngoại kiều vẫn bị loại trừ.")],
+                1 => [new("Ninh", "Không nên đồng nhất dân chủ với một mô hình duy nhất. Mỗi mô hình có đóng góp, giới hạn và điều kiện lịch sử riêng.")],
+                2 => [new("Ninh", "Người dân thực hiện quyền lực qua dân chủ trực tiếp và qua người đại diện. Được lắng nghe khác với có quyền quyết định.")],
+                _ => [new("Ninh", "Điều 2 xác định chủ thể quyền lực; Điều 6 nói về cách thực hiện; Điều 28 ghi nhận quyền tham gia. Muốn thực chất, cần cả giám sát và trách nhiệm giải trình.")]
+            });
+            return;
+        }
+        var neighborIndex = Array.FindIndex(Neighbors, n => n.Equals(_places[id].Label, StringComparison.Ordinal));
+        if (Chapter == Chapter.Lights && neighborIndex >= 0)
+        {
+            ShowDialogue([
+                new(Neighbors[neighborIndex], neighborIndex switch
+                {
+                    0 => "Mình từng gửi ý kiến, nhưng không rõ ý kiến sẽ đi tới đâu.",
+                    1 => "Một phương án mới có thể ảnh hưởng tới nhà mình. Mình muốn được biết và được nói.",
+                    2 => "Mình thấy một điều bất thường, nhưng phải kiểm tra trước khi kể với mọi người.",
+                    _ => "Mình chuyển lời giúp mọi người. Một lá thư gửi đi cần có thư trả lời."
+                }),
+                new("Quang", "Tiếng nói của bạn không hề nhỏ. Hãy cho mình mượn ngọn đèn nhé.")
+            ]);
+            return;
+        }
+        if (id.StartsWith("lamp") && Chapter == Chapter.Lights && int.TryParse(id[^1..], out var lampId))
+        {
+            if (!Spoken[lampId]) { Toast = "Hãy trò chuyện với " + Neighbors[lampId] + " trước."; UiDirty = true; return; }
+            Toast = Lamps[lampId] ? "Ngọn đèn đã ở đúng bệ." : "Đã đặt ngọn đèn của " + Neighbors[lampId] + ".";
+            UiDirty = true;
+            return;
+        }
+        if (id == "phuong" && Chapter == Chapter.Draft)
+        {
+            ShowDialogue([new("Phương", "Gửi được ý kiến mới chỉ là bước đầu. Bạn giúp mình sắp xếp đường đi của nó nhé?")]);
+            return;
+        }
+        if (id == "han")
+        {
+            ShowDialogue([new("Hán", Chapter == Chapter.News ? "Thông tin cần được tiếp nhận, xác minh, xử lý theo quy định rồi phản hồi." :
+                "Tiếp nhận không phải bước cuối. Còn tổng hợp, giải trình và đưa kết quả trở lại.")]);
+            return;
+        }
+        if (id == "dung" && Chapter == Chapter.River)
+        {
+            ShowDialogue([new("Dũng", "Tôi không đòi mọi người phải đồng ý. Tôi muốn phương án được công khai, ý kiến được ghi nhận và có đối thoại.")]);
+            return;
+        }
+        if (id == "nam" && Chapter == Chapter.River)
+        {
+            ShowDialogue([new("Nam", "Mình có thể mang ý kiến đi, nhưng đường đi phải qua đủ bốn trạm. Hãy thử chỉnh các biển chỉ hướng.")]);
+            return;
+        }
+        if (id == "bao" && Chapter == Chapter.News)
+        {
+            ShowDialogue([
+                new("Bảo", "Mình thấy một người nộp tiền phạt qua tài khoản cá nhân. Đây mới là lời kể của mình, cần đối chiếu thêm."),
+                new("Quang", "Mình sẽ tìm biên lai và bảng quy trình trước khi phản ánh.")
+            ]);
+            return;
+        }
+        if (id.StartsWith("clue") && Chapter == Chapter.News && int.TryParse(id[^1..], out var clueId) && clueId >= 0 && clueId < ClueNames.Length)
+        {
+            ShowDialogue([new("Quang", "Đã ghi vào sổ: " + ClueNames[clueId] + ".")]);
+            return;
+        }
+        Toast = "Chưa phải lúc này. Xem mục tiêu trong Sổ Tiếng Nói.";
+        UiDirty = true;
+    }
+
     private IEnumerable<Actor> ActiveActors()
     {
         var names = new[] { ("trong", "Trọng", "#deb783"), ("kieu_anh", "Kiều Anh", "#9fd1c4"),
@@ -613,6 +701,32 @@ public sealed class GameEngine
         Toast = "Đã chuyển tới " + (chapter switch { Chapter.Lights => "Quảng trường Ánh sáng", Chapter.Draft => "Xưởng Dự thảo", Chapter.River => "Khu ven sông", Chapter.News => "Phố Tin tức", _ => "Hòm Dân chủ" });
         UiDirty = true;
         PauseClock();
+    }
+
+    public void ApplyServerChapter(Chapter chapter)
+    {
+        Chapter = chapter;
+        if (chapter >= Chapter.River)
+        {
+            DraftDone = true;
+        }
+        if (chapter >= Chapter.News)
+        {
+            RiverDone = true;
+        }
+        if (chapter >= Chapter.Finale)
+        {
+            NewsDone = true;
+        }
+        Toast = chapter switch
+        {
+            Chapter.Draft => "Mảnh 1/4: Chủ thể quyền lực",
+            Chapter.River => "Mảnh 2/4: Cơ chế tham gia",
+            Chapter.News => "Mảnh 3/4: Phản hồi và kết quả",
+            Chapter.Finale => "Mảnh 4/4: Giám sát và phản ánh",
+            _ => Toast
+        };
+        UiDirty = true;
     }
 
     public SaveData CreateSave() => new(1, Chapter, [.. Spoken], [.. Lamps], [.. Clues], [.. Lore], DraftDone, RiverDone, NewsDone, Muted, TextScale);

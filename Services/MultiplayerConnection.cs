@@ -35,6 +35,17 @@ public sealed class MultiplayerConnection : IAsyncDisposable
     public event Action<MatchStartedEvent>? MatchStarted;
     public event Action<TeamGameStateSnapshot>? TeamStateUpdated;
     public event Action<PlayerMovedBroadcast>? PlayerMoved;
+    public event Action<PuzzleReservationState>? PuzzleReservationChanged;
+    public event Action<PublicProgressSnapshot>? PublicProgressUpdated;
+    public event Action<MatchFinishedEvent>? MatchFinished;
+    public event Action<RoomSnapshot>? RoomStateUpdated;
+    public event Action<SessionSupersededEvent>? SessionSuperseded;
+    public event Action<MatchPausedEvent>? MatchPaused;
+    public event Action<MatchResumedEvent>? MatchResumed;
+    public event Action<MatchEndedEvent>? MatchEnded;
+    public event Action<RoomClosedEvent>? RoomClosed;
+    public event Action<AdminSessionSupersededEvent>? AdminSessionSuperseded;
+    public event Action? Reconnected;
 
     public MultiplayerConnection(Uri hubUri, TimeSpan timeout)
     {
@@ -54,11 +65,14 @@ public sealed class MultiplayerConnection : IAsyncDisposable
             if (_disposed || State == OnlineConnectionState.Connected) return;
             await ClearHubAsync();
             SetState(OnlineConnectionState.Connecting, "Đang kết nối máy chủ…");
+            // Reconnect nghiệp vụ được điều khiển bởi Online.razor để có thể resume PlayerId/token;
+            // không tự retry transport rồi vô tình gửi command của phiên cũ.
             var hub = new HubConnectionBuilder().WithUrl(_hubUri).Build();
             hub.ServerTimeout = TimeSpan.FromSeconds(12);
             hub.KeepAliveInterval = TimeSpan.FromSeconds(3);
             _hub = hub;
             hub.Closed += OnClosedAsync;
+            hub.Reconnected += _ => { Reconnected?.Invoke(); return Task.CompletedTask; };
             hub.On<PlayerSnapshot>("PlayerJoined", p => PlayerJoined?.Invoke(p));
             hub.On<string>("PlayerLeft", id => PlayerLeft?.Invoke(id));
             hub.On<TeamSnapshot>("TeamAdded", t => TeamAdded?.Invoke(t));
@@ -78,6 +92,16 @@ public sealed class MultiplayerConnection : IAsyncDisposable
             hub.On<MatchStartedEvent>("MatchStarted", e => MatchStarted?.Invoke(e));
             hub.On<TeamGameStateSnapshot>("TeamStateUpdated", s => TeamStateUpdated?.Invoke(s));
             hub.On<PlayerMovedBroadcast>("PlayerMoved", e => PlayerMoved?.Invoke(e));
+            hub.On<PuzzleReservationState>("PuzzleReservationChanged", e => PuzzleReservationChanged?.Invoke(e));
+            hub.On<PublicProgressSnapshot>("PublicProgressUpdated", e => PublicProgressUpdated?.Invoke(e));
+            hub.On<MatchFinishedEvent>("MatchFinished", e => MatchFinished?.Invoke(e));
+            hub.On<RoomSnapshot>("RoomStateUpdated", e => RoomStateUpdated?.Invoke(e));
+            hub.On<SessionSupersededEvent>("SessionSuperseded", e => SessionSuperseded?.Invoke(e));
+            hub.On<MatchPausedEvent>("MatchPaused", e => MatchPaused?.Invoke(e));
+            hub.On<MatchResumedEvent>("MatchResumed", e => MatchResumed?.Invoke(e));
+            hub.On<MatchEndedEvent>("MatchEnded", e => MatchEnded?.Invoke(e));
+            hub.On<RoomClosedEvent>("RoomClosed", e => RoomClosed?.Invoke(e));
+            hub.On<AdminSessionSupersededEvent>("AdminSessionSuperseded", e => AdminSessionSuperseded?.Invoke(e));
             using var attempt = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             attempt.CancelAfter(_timeout);
             await hub.StartAsync(attempt.Token);
@@ -398,6 +422,136 @@ public sealed class MultiplayerConnection : IAsyncDisposable
         catch (Exception ex)
         {
             return new InteractResponse(false, ex.Message, request?.ObjectId, false, null);
+        }
+    }
+
+    public async Task<AdminEndMatchResponse> AdminEndMatchAsync(AdminEndMatchRequest request) => await InvokeAsync<AdminEndMatchResponse>("AdminEndMatch", request, new(false, "NOT_CONNECTED", null, null));
+    public async Task<AdminCancelMatchResponse> AdminCancelMatchAsync(AdminCancelMatchRequest request) => await InvokeAsync<AdminCancelMatchResponse>("AdminCancelMatch", request, new(false, "NOT_CONNECTED", null, null));
+    public async Task<AdminCloseRoomResponse> AdminCloseRoomAsync(AdminCloseRoomRequest request) => await InvokeAsync<AdminCloseRoomResponse>("AdminCloseRoom", request, new(false, "NOT_CONNECTED", null, null));
+    public async Task<ResumeAdminResponse> ResumeAdminAsync(ResumeAdminRequest request) => await InvokeAsync<ResumeAdminResponse>("ResumeAdmin", request, new(false, "NOT_CONNECTED", null, null));
+    public async Task<LateJoinResponse> LateJoinAsync(LateJoinRequest request) => await InvokeAsync<LateJoinResponse>("LateJoin", request, new(false, "NOT_CONNECTED", null, null, null, null, null));
+    public async Task<AdminSetCanPlayResponse> AdminSetCanPlayAsync(AdminSetCanPlayRequest request) => await InvokeAsync<AdminSetCanPlayResponse>("AdminSetCanPlay", request, new(false, "NOT_CONNECTED", false, 0));
+    public async Task<AdminSetEndOnFirstFinishResponse> AdminSetEndOnFirstFinishAsync(AdminSetEndOnFirstFinishRequest request) => await InvokeAsync<AdminSetEndOnFirstFinishResponse>("AdminSetEndOnFirstFinish", request, new(false, "NOT_CONNECTED", false, 0));
+    public async Task<AdminJoinAsPlayerResponse> AdminJoinAsPlayerAsync(AdminJoinAsPlayerRequest request) => await InvokeAsync<AdminJoinAsPlayerResponse>("AdminJoinAsPlayer", request, new(false, "NOT_CONNECTED", null, null, null, null));
+
+    private async Task<T> InvokeAsync<T>(string method, object request, T disconnected)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected) return disconnected;
+        try { using var cts = new CancellationTokenSource(_timeout); return await _hub.InvokeAsync<T>(method, request, cts.Token); }
+        catch (Exception) { return disconnected; }
+    }
+
+    public async Task<ResumePlayerResponse> ResumePlayerAsync(ResumePlayerRequest request)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected)
+            return new ResumePlayerResponse(false, "NOT_CONNECTED", null, null, null, null, null, null, null);
+        try
+        {
+            using var cts = new CancellationTokenSource(_timeout);
+            return await _hub.InvokeAsync<ResumePlayerResponse>("ResumePlayer", request, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            return new ResumePlayerResponse(false, ex.Message, null, null, null, null, null, null, null);
+        }
+    }
+
+    public async Task<HeartbeatResponse> HeartbeatAsync(HeartbeatRequest request)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected)
+            return new HeartbeatResponse(false, "NOT_CONNECTED", DateTimeOffset.UtcNow);
+        try
+        {
+            using var cts = new CancellationTokenSource(_timeout);
+            return await _hub.InvokeAsync<HeartbeatResponse>("Heartbeat", request, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            return new HeartbeatResponse(false, ex.Message, DateTimeOffset.UtcNow);
+        }
+    }
+
+    public async Task<AdminNewMatchResponse> AdminNewMatchAsync(AdminNewMatchRequest request)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected)
+            return new AdminNewMatchResponse(false, "NOT_CONNECTED", null, null, null);
+        try { using var cts = new CancellationTokenSource(_timeout); return await _hub.InvokeAsync<AdminNewMatchResponse>("AdminNewMatch", request, cts.Token); }
+        catch (Exception ex) { return new AdminNewMatchResponse(false, ex.Message, null, null, null); }
+    }
+
+    public async Task<AdminPauseMatchResponse> AdminPauseMatchAsync(AdminPauseMatchRequest request)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected)
+            return new AdminPauseMatchResponse(false, "NOT_CONNECTED", null);
+        try { using var cts = new CancellationTokenSource(_timeout); return await _hub.InvokeAsync<AdminPauseMatchResponse>("AdminPauseMatch", request, cts.Token); }
+        catch (Exception ex) { return new AdminPauseMatchResponse(false, ex.Message, null); }
+    }
+
+    public async Task<AdminResumeMatchResponse> AdminResumeMatchAsync(AdminResumeMatchRequest request)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected)
+            return new AdminResumeMatchResponse(false, "NOT_CONNECTED", null);
+        try { using var cts = new CancellationTokenSource(_timeout); return await _hub.InvokeAsync<AdminResumeMatchResponse>("AdminResumeMatch", request, cts.Token); }
+        catch (Exception ex) { return new AdminResumeMatchResponse(false, ex.Message, null); }
+    }
+
+    public async Task<ReservePuzzleResponse> ReservePuzzleAsync(ReservePuzzleRequest request)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected)
+            return new ReservePuzzleResponse(false, "NOT_CONNECTED", null, null);
+        try
+        {
+            using var cts = new CancellationTokenSource(_timeout);
+            return await _hub.InvokeAsync<ReservePuzzleResponse>("ReservePuzzle", request, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            return new ReservePuzzleResponse(false, ex.Message, null, null);
+        }
+    }
+
+    public async Task<ReleasePuzzleResponse> ReleasePuzzleAsync(ReleasePuzzleRequest request)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected)
+            return new ReleasePuzzleResponse(false, "NOT_CONNECTED", null);
+        try
+        {
+            using var cts = new CancellationTokenSource(_timeout);
+            return await _hub.InvokeAsync<ReleasePuzzleResponse>("ReleasePuzzle", request, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            return new ReleasePuzzleResponse(false, ex.Message, null);
+        }
+    }
+
+    public async Task<ValidatePuzzleSubmissionResponse> ValidatePuzzleSubmissionAsync(ValidatePuzzleSubmissionRequest request)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected)
+            return new ValidatePuzzleSubmissionResponse(false, "NOT_CONNECTED");
+        try
+        {
+            using var cts = new CancellationTokenSource(_timeout);
+            return await _hub.InvokeAsync<ValidatePuzzleSubmissionResponse>("ValidatePuzzleSubmission", request, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            return new ValidatePuzzleSubmissionResponse(false, ex.Message);
+        }
+    }
+
+    public async Task<SubmitPuzzleResponse> SubmitPuzzleAsync(SubmitPuzzleRequest request)
+    {
+        if (_hub is null || State != OnlineConnectionState.Connected)
+            return new SubmitPuzzleResponse(false, "NOT_CONNECTED", false, false, 0, null);
+        try
+        {
+            using var cts = new CancellationTokenSource(_timeout);
+            return await _hub.InvokeAsync<SubmitPuzzleResponse>("SubmitPuzzle", request, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            return new SubmitPuzzleResponse(false, ex.Message, false, false, 0, null);
         }
     }
 

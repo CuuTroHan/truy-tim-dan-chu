@@ -12,18 +12,18 @@
 
     <div class="form-group">
         <label for="join-code">Mã phòng thi đấu</label>
-        <input id="join-code" type="text" maxlength="10" @bind="_roomCode" @bind:event="oninput" placeholder="VD: DC-4821" style="text-transform:uppercase;font-family:monospace;letter-spacing:2px;font-weight:700" />
+        <input id="join-code" data-testid="join-room-code" type="text" maxlength="10" @bind="_roomCode" @bind:event="oninput" placeholder="VD: DC-4821" style="text-transform:uppercase;font-family:monospace;letter-spacing:2px;font-weight:700" />
         <small>Mã phòng có tiền tố DC-</small>
     </div>
 
     <div class="form-group">
         <label for="player-name">Tên hiển thị của bạn</label>
-        <input id="player-name" type="text" maxlength="25" @bind="_displayName" placeholder="VD: Hoàng Nam" />
+        <input id="player-name" data-testid="join-player-name" type="text" maxlength="25" @bind="_displayName" placeholder="VD: Hoàng Nam" />
         <small>Từ 2 đến 25 ký tự, không trùng với thành viên khác.</small>
     </div>
 
     <div class="join-room-actions">
-        <button class="primary-button" disabled="@_submitting" @onclick="HandleJoin">
+        <button class="primary-button" data-testid="join-room-submit" disabled="@_submitting" @onclick="HandleJoin">
             @(_submitting ? "ĐANG THAM GIA…" : "THAM GIA PHÒNG →")
         </button>
     </div>

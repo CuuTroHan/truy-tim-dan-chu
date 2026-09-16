@@ -1,0 +1,76 @@
+@page "/match-history"
+@using System.Net.Http.Headers
+@using TruyTimDanChu.Shared
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Lịch sử trận</PageTitle>
+<section class="online-shell">
+    <h1>Lịch sử trận</h1>
+    @if (_loading) { <p>Đang tải…</p> }
+    else if (!string.IsNullOrEmpty(_error)) { <p class="error-text">@_error</p> }
+    else if (_page is null || _page.Items.Count == 0) { <p>Chưa có trận đã lưu.</p> }
+    else
+    {
+        <div class="history-list">
+            @foreach (var item in _page.Items)
+            {
+                <article class="panel-card">
+                    <button class="secondary-button" data-testid="history-match-@item.MatchId" @onclick="() => LoadDetail(item.MatchId)">
+                        @item.StartedAtUtc.ToLocalTime().ToString("g") · @item.EndReason · @item.CompletedTeamCount/@item.TeamCount đội
+                    </button>
+                    @if (_detail?.MatchId == item.MatchId)
+                    {
+                        <div><button class="secondary-button" data-testid="history-export-csv" disabled="@_exporting" @onclick="() => Export(item.MatchId)">Xuất CSV</button></div>
+                        <table><thead><tr><th>Đội</th><th>Trạng thái</th><th>Hạng</th><th>Thành viên</th></tr></thead><tbody>
+                        @foreach (var team in _detail.Teams)
+                        { <tr><td>@team.TeamName</td><td>@team.Status</td><td>@(team.Rank?.ToString() ?? "—")</td><td>@string.Join("; ", team.Members.Select(x => x.DisplayName))</td></tr> }
+                        </tbody></table>
+                    }
+                </article>
+            }
+        </div>
+        @if (_page.HasMore) { <button class="primary-button" @onclick="LoadMore">Tải thêm</button> }
+    }
+</section>
+
+@code {
+    private MatchHistoryPage? _page; private MatchHistoryDetail? _detail; private bool _loading = true; private bool _exporting; private string? _error;
+    private string? _roomId; private string? _token; private string? _cursorTime; private string? _cursorId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _roomId = await JS.InvokeAsync<string?>("sessionStorage.getItem", "ttdc_admin_room");
+        _token = await JS.InvokeAsync<string?>("sessionStorage.getItem", "ttdc_admin_token");
+        await LoadPage(false);
+    }
+
+    private async Task LoadPage(bool append)
+    {
+        if (string.IsNullOrWhiteSpace(_roomId) || string.IsNullOrWhiteSpace(_token)) { _error = "Phiên admin đã hết hạn; hãy resume phòng trước."; _loading = false; return; }
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"api/rooms/{Uri.EscapeDataString(_roomId)}/matches?pageSize=20" + (append ? $"&cursorEndedAtUtc={Uri.EscapeDataString(_cursorTime!)}&cursorMatchId={Uri.EscapeDataString(_cursorId!)}" : ""));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+            var page = await (await Http.SendAsync(request)).Content.ReadFromJsonAsync<MatchHistoryPage>();
+            if (append && _page is not null && page is not null) _page = new(_page.Items.Concat(page.Items).ToArray(), page.NextCursorEndedAtUtc, page.NextCursorMatchId, page.HasMore);
+            else _page = page;
+            _cursorTime = _page?.NextCursorEndedAtUtc?.ToString("O"); _cursorId = _page?.NextCursorMatchId;
+        }
+        catch { _error = "Không tải được lịch sử trận."; }
+        _loading = false;
+    }
+    private Task LoadMore() => LoadPage(true);
+    private async Task LoadDetail(string matchId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"api/rooms/{Uri.EscapeDataString(_roomId!)}/matches/{Uri.EscapeDataString(matchId)}"); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+        _detail = await (await Http.SendAsync(request)).Content.ReadFromJsonAsync<MatchHistoryDetail>();
+    }
+    private async Task Export(string matchId)
+    {
+        _exporting = true;
+        try { using var request = new HttpRequestMessage(HttpMethod.Get, $"api/rooms/{Uri.EscapeDataString(_roomId!)}/matches/{Uri.EscapeDataString(matchId)}/results.csv"); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token); using var response = await Http.SendAsync(request); var bytes = await response.Content.ReadAsByteArrayAsync(); await JS.InvokeVoidAsync("ttdcDownloadBytes", "match-results.csv", Convert.ToBase64String(bytes)); }
+        catch { _error = "Không xuất được CSV."; }
+        _exporting = false;
+    }
+}

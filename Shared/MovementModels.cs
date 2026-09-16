@@ -5,7 +5,8 @@ public sealed record PlayerMovementInput(
     string PlayerId,
     int Keys,
     int Sequence,
-    long ClientTimestampMs
+    long ClientTimestampMs,
+    string? MatchId = null
 );
 
 public sealed record MovementAck(

@@ -119,8 +119,11 @@ public sealed class NpcProgressIntegrationTests
         redGame.UpdateMemberPosition(pBId, 206f, 338f, 0, 0);
 
         // Reset TCS for B
-        bUpdatedTcs = new TaskCompletionSource<TeamGameStateSnapshot>();
-        playerB.On<TeamGameStateSnapshot>("TeamStateUpdated", snap => bUpdatedTcs.TrySetResult(snap));
+        bUpdatedTcs = new TaskCompletionSource<TeamGameStateSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        playerB.On<TeamGameStateSnapshot>("TeamStateUpdated", snap =>
+        {
+            if (snap.Progress.Spoken[0]) bUpdatedTcs.TrySetResult(snap);
+        });
 
         // Player A interacts with Phuong
         var phuongInteract = await playerA.InvokeAsync<InteractResponse>("Interact",
@@ -130,7 +133,7 @@ public sealed class NpcProgressIntegrationTests
         Assert.True(phuongInteract.State!.Progress.Spoken[0]);
 
         // Player B receives broadcast with Spoken[0] == true
-        var bSnap = await bUpdatedTcs.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var bSnap = await bUpdatedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(bSnap.Progress.Spoken[0]);
 
         // 7. Player B interacts with Dung

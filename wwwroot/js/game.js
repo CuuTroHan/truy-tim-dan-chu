@@ -459,3 +459,11 @@ function drawBang(c, x, y, ts) {
   c.fillStyle = "#f7d88b"; c.fillRect(x - 4, y - 10 + bob, 8, 8);
   c.fillStyle = "#493f48"; c.font = "bold 8px sans-serif"; c.fillText("!", x - 1, y - 4 + bob);
 }
+
+window.ttdcDownloadBytes = (fileName, base64) => {
+  const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob); const a = document.createElement("a");
+  a.href = url; a.download = fileName || "match-results.csv"; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};

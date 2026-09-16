@@ -18,7 +18,7 @@
         <div class="form-row">
             <div class="form-group flex-2">
                 <label for="team-name-input">TÊN ĐỘI</label>
-                <input id="team-name-input"
+                <input id="team-name-input" data-testid="team-name-input"
                        type="text"
                        placeholder="Ví dụ: Đội Đỏ, Đội Sao Vàng…"
                        maxlength="30"
@@ -29,7 +29,7 @@
 
             <div class="form-group flex-1">
                 <label for="team-capacity-input">SỨC CHỨA (1–8)</label>
-                <input id="team-capacity-input"
+                <input id="team-capacity-input" data-testid="team-capacity-input"
                        type="number"
                        min="1"
                        max="8"
@@ -60,7 +60,7 @@
         </div>
 
         <div class="team-editor-actions">
-            <button type="submit"
+            <button type="submit" data-testid="add-team-submit"
                     class="primary-button add-team-btn"
                     disabled="@(_isSubmitting || string.IsNullOrWhiteSpace(_name))">
                 @(_isSubmitting ? "ĐANG THÊM…" : "+ THÊM ĐỘI MỚI")

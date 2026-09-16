@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
-    <DefaultItemExcludes>$(DefaultItemExcludes);dist\**;Tests\**;Server\**;Shared\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);dist\**;artifacts\**;Tests\**;Server\**;Shared\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,6 +18,10 @@
 
   <ItemGroup>
     <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <Content Remove="wwwroot\appsettings.Development.json" />
   </ItemGroup>
 
   <ItemGroup>
