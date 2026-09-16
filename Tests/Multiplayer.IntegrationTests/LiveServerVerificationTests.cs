@@ -24,7 +24,7 @@ public sealed class LiveServerVerificationTests
         using var http = new HttpClient();
         var css = await http.GetStringAsync($"{BaseUrl}/css/app.css");
         Assert.Contains(".reservation-proof", css);
-        Assert.Contains("margin:16px 0 12px", css.Replace(" ", ""));
+        Assert.Contains("margin:16px 0 12px", css);
         _output.WriteLine("✓ Issue 1 PASSED: .reservation-proof has margin: 16px 0 12px;");
     }
 
@@ -141,7 +141,7 @@ public sealed class LiveServerVerificationTests
             new ReservePuzzleRequest(roomId, adminPlayerId, PuzzleIds.Mirrors, matchId));
         Assert.True(res1.Success, $"Reserve Mirrors failed: {res1.ErrorCode}");
         var sub1 = await adminHub.InvokeAsync<SubmitPuzzleResponse>("SubmitPuzzle",
-            new SubmitPuzzleRequest(roomId, adminPlayerId, PuzzleIds.Mirrors, res1.ReservationToken!, [0, 0, 0, 0], Guid.NewGuid().ToString("N"), matchId));
+            new SubmitPuzzleRequest(roomId, adminPlayerId, PuzzleIds.Mirrors, res1.ReservationToken!, [1, 2, 3, 0], Guid.NewGuid().ToString("N"), matchId));
         Assert.True(sub1.Success && sub1.Correct == true, $"Mirrors submit failed: {sub1.ErrorCode}");
         _output.WriteLine("✓ Puzzle 1 (Mirrors) solved -> Shard 1 collected.");
 
@@ -154,7 +154,7 @@ public sealed class LiveServerVerificationTests
             new ReservePuzzleRequest(roomId, adminPlayerId, PuzzleIds.Draft, matchId));
         Assert.True(res2.Success, $"Reserve Draft failed: {res2.ErrorCode}");
         var sub2 = await adminHub.InvokeAsync<SubmitPuzzleResponse>("SubmitPuzzle",
-            new SubmitPuzzleRequest(roomId, adminPlayerId, PuzzleIds.Draft, res2.ReservationToken!, [2, 0, 5, 1, 4, 3], Guid.NewGuid().ToString("N"), matchId));
+            new SubmitPuzzleRequest(roomId, adminPlayerId, PuzzleIds.Draft, res2.ReservationToken!, [0, 1, 2, 3, 4, 5], Guid.NewGuid().ToString("N"), matchId));
         Assert.True(sub2.Success && sub2.Correct == true, $"Draft submit failed: {sub2.ErrorCode}");
         _output.WriteLine("✓ Puzzle 2 (Draft) solved -> Shard 2 collected.");
 
@@ -167,7 +167,7 @@ public sealed class LiveServerVerificationTests
             new ReservePuzzleRequest(roomId, adminPlayerId, PuzzleIds.River, matchId));
         Assert.True(res3.Success, $"Reserve River failed: {res3.ErrorCode}");
         var sub3 = await adminHub.InvokeAsync<SubmitPuzzleResponse>("SubmitPuzzle",
-            new SubmitPuzzleRequest(roomId, adminPlayerId, PuzzleIds.River, res3.ReservationToken!, [0, 0, 0, 0], Guid.NewGuid().ToString("N"), matchId));
+            new SubmitPuzzleRequest(roomId, adminPlayerId, PuzzleIds.River, res3.ReservationToken!, [1, 2, 3, 0], Guid.NewGuid().ToString("N"), matchId));
         Assert.True(sub3.Success && sub3.Correct == true, $"River submit failed: {sub3.ErrorCode}");
         _output.WriteLine("✓ Puzzle 3 (River) solved -> Shard 3 collected.");
 
