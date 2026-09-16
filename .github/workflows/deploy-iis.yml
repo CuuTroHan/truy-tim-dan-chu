@@ -8,15 +8,27 @@ on:
 jobs:
   deploy:
     name: Build and Deploy to IIS
-    runs-on: self-hosted
+    runs-on: [self-hosted, windows, X64, deploy-vps]
 
     steps:
       - name: 1. Checkout repository
         uses: actions/checkout@v4
 
+      - name: 1b. Verify deployment runner
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          Write-Host "Runner machine: $env:COMPUTERNAME" -ForegroundColor Cyan
+          Write-Host "Runner account:" -ForegroundColor Cyan
+          whoami
+          if ($env:COMPUTERNAME -ne "AZVPS") {
+              throw "Sai runner. Workflow deploy phai chay tren AZVPS."
+          }
+
       - name: 2. Ensure .NET 10 SDK is installed
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
           $installed = $false
           try {
               $ver = dotnet --version 2>$null
@@ -44,36 +56,62 @@ jobs:
       - name: 3. Publish Blazor WebAssembly Client
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
           Write-Host "Dang bien dich Client Blazor WebAssembly..." -ForegroundColor Cyan
           $clientOut = "C:\TempDeploy\client"
           if (Test-Path $clientOut) { Remove-Item $clientOut -Recurse -Force }
           dotnet publish TruyTimDanChu.csproj -c Release -o $clientOut --nologo
+          if ($LASTEXITCODE -ne 0) { throw "Publish client that bai." }
 
       - name: 4. Publish Game Server (ASP.NET Core)
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
           Write-Host "Dang bien dich Game Server..." -ForegroundColor Cyan
           $serverOut = "C:\TempDeploy\server"
           if (Test-Path $serverOut) { Remove-Item $serverOut -Recurse -Force }
           dotnet publish Server/TruyTimDanChu.Server.csproj -c Release -o $serverOut --nologo
+          if ($LASTEXITCODE -ne 0) { throw "Publish server that bai." }
+          if (-not (Test-Path "$serverOut\web.config")) { throw "Publish server thieu web.config." }
+          if (-not (Test-Path "$serverOut\TruyTimDanChu.Server.dll")) { throw "Publish server thieu DLL." }
 
       - name: 5. Merge Client assets into Server wwwroot
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
           Write-Host "Dong goi Client vao wwwroot cua Server..." -ForegroundColor Cyan
           $serverWwwroot = "C:\TempDeploy\server\wwwroot"
           if (-not (Test-Path $serverWwwroot)) { New-Item -ItemType Directory -Path $serverWwwroot -Force }
-          Copy-Item -Path "C:\TempDeploy\client\wwwroot\*" -Destination $serverWwwroot -Recurse -Force
+          if (-not (Test-Path "C:\TempDeploy\client\wwwroot\index.html")) { throw "Client publish thieu wwwroot\index.html." }
+          Copy-Item -Path "C:\TempDeploy\client\wwwroot\*" -Destination $serverWwwroot -Recurse -Force -ErrorAction Stop
+          if (-not (Test-Path "$serverWwwroot\index.html")) { throw "Merge client thieu index.html." }
 
       - name: 6. Deploy to IIS inetpub
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
           $targetDir = "C:\inetpub\wwwroot\truy-tim-dan-chu"
+          $sourceDir = "C:\TempDeploy\server"
           Write-Host "Trien khai den $targetDir..." -ForegroundColor Cyan
 
           if (-not (Test-Path $targetDir)) {
               New-Item -ItemType Directory -Path $targetDir -Force
           }
+
+          foreach ($file in @(
+              "$sourceDir\web.config",
+              "$sourceDir\TruyTimDanChu.Server.dll",
+              "$sourceDir\wwwroot\index.html"
+          )) {
+              if (-not (Test-Path $file)) { throw "Source deploy thieu file: $file" }
+          }
+
+          Import-Module WebAdministration
+          if (-not (Test-Path "IIS:\Sites\TruyTimDanChu")) {
+              throw "IIS site TruyTimDanChu khong ton tai tren AZVPS."
+          }
+          Set-ItemProperty "IIS:\Sites\TruyTimDanChu" -Name physicalPath -Value $targetDir
+          Set-ItemProperty "IIS:\Sites\TruyTimDanChu" -Name applicationPool -Value "TruyTimDanChu"
 
           # Dat file app_offline.htm de IIS giai phong tai nguyen va file dll dang chay
           Write-Host "Tam dung ung dung IIS bang app_offline.htm..." -ForegroundColor Yellow
@@ -92,24 +130,37 @@ jobs:
 
           # Copy toan bo file build moi vao thu muc IIS
           Write-Host "Dang copy file moi vao $targetDir..." -ForegroundColor Green
-          Copy-Item -Path "C:\TempDeploy\server\*" -Destination $targetDir -Recurse -Force
+          Copy-Item -Path "$sourceDir\*" -Destination $targetDir -Recurse -Force -ErrorAction Stop
+
+          foreach ($file in @(
+              "$targetDir\web.config",
+              "$targetDir\TruyTimDanChu.Server.dll",
+              "$targetDir\wwwroot\index.html"
+          )) {
+              if (-not (Test-Path $file)) { throw "Target deploy thieu file: $file" }
+          }
+          Write-Host "Deploy file verification PASSED" -ForegroundColor Green
 
           # Xoa app_offline.htm de IIS tu dong nap lai ung dung moi
           Write-Host "Khoi dong lai ung dung bang cach go app_offline.htm..." -ForegroundColor Green
           Remove-Item -Path "$targetDir\app_offline.htm" -Force -ErrorAction SilentlyContinue
 
-          # Don dep thu muc tam
-          Remove-Item -Path "C:\TempDeploy" -Recurse -Force -ErrorAction SilentlyContinue
-
-          # Neu co the, recycle AppPool TruyTimDanChu de lam moi cache ngay lap tuc
-          try {
-              Import-Module WebAdministration -ErrorAction SilentlyContinue
-              if (Get-Item "IIS:\AppPools\TruyTimDanChu" -ErrorAction SilentlyContinue) {
-                  Write-Host "Dang recycle AppPool 'TruyTimDanChu'..." -ForegroundColor Cyan
-                  Restart-WebAppPool -Name "TruyTimDanChu"
-              }
-          } catch {
-              Write-Host "Bo qua recycle AppPool: $($_.Exception.Message)" -ForegroundColor Gray
+          # Recycle AppPool TruyTimDanChu de lam moi ung dung
+          if (Get-Item "IIS:\AppPools\TruyTimDanChu" -ErrorAction SilentlyContinue) {
+              Write-Host "Dang recycle AppPool 'TruyTimDanChu'..." -ForegroundColor Cyan
+              Restart-WebAppPool -Name "TruyTimDanChu"
+          } else {
+              throw "IIS AppPool TruyTimDanChu khong ton tai."
           }
 
-          Write-Host "Auto-Deploy hoan tat thanh cong!" -ForegroundColor Green
+          Start-Sleep -Seconds 5
+          $health = Invoke-WebRequest -Uri "http://127.0.0.1:5080/health" -UseBasicParsing
+          $ready = Invoke-WebRequest -Uri "http://127.0.0.1:5080/ready" -UseBasicParsing
+          if ($health.StatusCode -ne 200 -or $ready.StatusCode -ne 200) {
+              throw "Health check that bai: health=$($health.StatusCode), ready=$($ready.StatusCode)"
+          }
+
+          # Don dep thu muc tam sau khi health check thanh cong
+          Remove-Item -Path "C:\TempDeploy" -Recurse -Force -ErrorAction SilentlyContinue
+
+          Write-Host "Auto-Deploy hoan tat thanh cong: health=$($health.StatusCode), ready=$($ready.StatusCode)" -ForegroundColor Green
