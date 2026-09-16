@@ -1,0 +1,94 @@
+name: Auto Deploy to IIS (inetpub)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build and Deploy to IIS
+    runs-on: self-hosted
+
+    steps:
+      - name: 1. Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 2. Run Automated Unit Tests
+        shell: powershell
+        run: |
+          Write-Host "Dang chay bo kiem thu tu dong..." -ForegroundColor Cyan
+          dotnet test Tests/Multiplayer.UnitTests/Multiplayer.UnitTests.csproj -c Release --nologo
+
+      - name: 3. Publish Blazor WebAssembly Client
+        shell: powershell
+        run: |
+          Write-Host "Dang bien dich Client Blazor WebAssembly..." -ForegroundColor Cyan
+          $clientOut = "C:\TempDeploy\client"
+          if (Test-Path $clientOut) { Remove-Item $clientOut -Recurse -Force }
+          dotnet publish TruyTimDanChu.csproj -c Release -o $clientOut --nologo
+
+      - name: 4. Publish Game Server (ASP.NET Core)
+        shell: powershell
+        run: |
+          Write-Host "Dang bien dich Game Server..." -ForegroundColor Cyan
+          $serverOut = "C:\TempDeploy\server"
+          if (Test-Path $serverOut) { Remove-Item $serverOut -Recurse -Force }
+          dotnet publish Server/TruyTimDanChu.Server.csproj -c Release -o $serverOut --nologo
+
+      - name: 5. Merge Client assets into Server wwwroot
+        shell: powershell
+        run: |
+          Write-Host "Dong goi Client vao wwwroot cua Server..." -ForegroundColor Cyan
+          $serverWwwroot = "C:\TempDeploy\server\wwwroot"
+          if (-not (Test-Path $serverWwwroot)) { New-Item -ItemType Directory -Path $serverWwwroot -Force }
+          Copy-Item -Path "C:\TempDeploy\client\wwwroot\*" -Destination $serverWwwroot -Recurse -Force
+
+      - name: 6. Deploy to IIS inetpub
+        shell: powershell
+        run: |
+          $targetDir = "C:\inetpub\truy-tim-dan-chu"
+          Write-Host "Trien khai den $targetDir..." -ForegroundColor Cyan
+
+          if (-not (Test-Path $targetDir)) {
+              New-Item -ItemType Directory -Path $targetDir -Force
+          }
+
+          # Dat file app_offline.htm de IIS giai phong tai nguyen va file dll dang chay
+          Write-Host "Tam dung ung dung IIS bang app_offline.htm..." -ForegroundColor Yellow
+          $offlineHtml = @"
+          <!DOCTYPE html>
+          <html>
+          <head><meta charset='utf-8'><title>Dang cap nhat</title></head>
+          <body style='font-family:sans-serif;text-align:center;padding:50px;'>
+            <h2>Dang cap nhat he thong Truy Tim Dan Chu...</h2>
+            <p>Vui long cho trong giay lat roi tai lai trang.</p>
+          </body>
+          </html>
+          "@
+          Set-Content -Path "$targetDir\app_offline.htm" -Value $offlineHtml -Encoding UTF8
+          Start-Sleep -Seconds 3
+
+          # Copy toan bo file build moi vao thu muc IIS
+          Write-Host "Dang copy file moi vao $targetDir..." -ForegroundColor Green
+          Copy-Item -Path "C:\TempDeploy\server\*" -Destination $targetDir -Recurse -Force
+
+          # Xoa app_offline.htm de IIS tu dong nap lai ung dung moi
+          Write-Host "Khoi dong lai ung dung bang cach go app_offline.htm..." -ForegroundColor Green
+          Remove-Item -Path "$targetDir\app_offline.htm" -Force -ErrorAction SilentlyContinue
+
+          # Don dep thu muc tam
+          Remove-Item -Path "C:\TempDeploy" -Recurse -Force -ErrorAction SilentlyContinue
+
+          # Neu co the, recycle AppPool TruyTimDanChu de lam moi cache ngay lap tuc
+          try {
+              Import-Module WebAdministration -ErrorAction SilentlyContinue
+              if (Get-Item "IIS:\AppPools\TruyTimDanChu" -ErrorAction SilentlyContinue) {
+                  Write-Host "Dang recycle AppPool 'TruyTimDanChu'..." -ForegroundColor Cyan
+                  Restart-WebAppPool -Name "TruyTimDanChu"
+              }
+          } catch {
+              Write-Host "Bo qua recycle AppPool: $($_.Exception.Message)" -ForegroundColor Gray
+          }
+
+          Write-Host "Auto-Deploy hoan tat thanh cong!" -ForegroundColor Green
