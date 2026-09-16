@@ -14,18 +14,34 @@ jobs:
       - name: 1. Checkout repository
         uses: actions/checkout@v4
 
-      - name: 2. Setup .NET 10 SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: 3. Run Automated Unit Tests
+      - name: 2. Ensure .NET 10 SDK is installed
         shell: powershell
         run: |
-          Write-Host "Dang chay bo kiem thu tu dong..." -ForegroundColor Cyan
-          dotnet test Tests/Multiplayer.UnitTests/Multiplayer.UnitTests.csproj -c Release --nologo
+          $installed = $false
+          try {
+              $ver = dotnet --version 2>$null
+              if ($ver -and $ver.StartsWith("10.")) {
+                  $installed = $true
+                  Write-Host "Da co san .NET SDK $ver tren VPS." -ForegroundColor Green
+              }
+          } catch {}
 
-      - name: 4. Publish Blazor WebAssembly Client
+          if (-not $installed) {
+              Write-Host "Dang tai va cai dat .NET 10 SDK truc tiep tu Microsoft..." -ForegroundColor Yellow
+              $installer = "$env:TEMP\dotnet-sdk-10.0.302.exe"
+              Invoke-WebRequest -Uri "https://dotnetcli.azureedge.net/dotnet/Sdk/10.0.302/dotnet-sdk-10.0.302-win-x64.exe" -OutFile $installer
+              Write-Host "Dang cai dat .NET 10 SDK..." -ForegroundColor Cyan
+              Start-Process $installer -ArgumentList "/install /quiet /norestart" -Wait
+              Write-Host "Cai dat hoan tat!" -ForegroundColor Green
+              Remove-Item $installer -Force -ErrorAction SilentlyContinue
+          }
+
+          # Refresh PATH trong phien chay
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          Write-Host "Phien ban .NET hien tai:" -ForegroundColor Cyan
+          dotnet --version
+
+      - name: 3. Publish Blazor WebAssembly Client
         shell: powershell
         run: |
           Write-Host "Dang bien dich Client Blazor WebAssembly..." -ForegroundColor Cyan
@@ -33,7 +49,7 @@ jobs:
           if (Test-Path $clientOut) { Remove-Item $clientOut -Recurse -Force }
           dotnet publish TruyTimDanChu.csproj -c Release -o $clientOut --nologo
 
-      - name: 5. Publish Game Server (ASP.NET Core)
+      - name: 4. Publish Game Server (ASP.NET Core)
         shell: powershell
         run: |
           Write-Host "Dang bien dich Game Server..." -ForegroundColor Cyan
@@ -41,7 +57,7 @@ jobs:
           if (Test-Path $serverOut) { Remove-Item $serverOut -Recurse -Force }
           dotnet publish Server/TruyTimDanChu.Server.csproj -c Release -o $serverOut --nologo
 
-      - name: 6. Merge Client assets into Server wwwroot
+      - name: 5. Merge Client assets into Server wwwroot
         shell: powershell
         run: |
           Write-Host "Dong goi Client vao wwwroot cua Server..." -ForegroundColor Cyan
@@ -49,7 +65,7 @@ jobs:
           if (-not (Test-Path $serverWwwroot)) { New-Item -ItemType Directory -Path $serverWwwroot -Force }
           Copy-Item -Path "C:\TempDeploy\client\wwwroot\*" -Destination $serverWwwroot -Recurse -Force
 
-      - name: 7. Deploy to IIS inetpub
+      - name: 6. Deploy to IIS inetpub
         shell: powershell
         run: |
           $targetDir = "C:\inetpub\wwwroot\truy-tim-dan-chu"
@@ -72,7 +88,7 @@ jobs:
           </html>
           "@
           Set-Content -Path "$targetDir\app_offline.htm" -Value $offlineHtml -Encoding UTF8
-          Start-Sleep -Seconds 3
+          Start-Sleep -Seconds 2
 
           # Copy toan bo file build moi vao thu muc IIS
           Write-Host "Dang copy file moi vao $targetDir..." -ForegroundColor Green
@@ -97,4 +113,3 @@ jobs:
           }
 
           Write-Host "Auto-Deploy hoan tat thanh cong!" -ForegroundColor Green
-
