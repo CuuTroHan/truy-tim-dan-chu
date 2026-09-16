@@ -33,8 +33,17 @@
     </header>
 
     <div class="lobby-content">
-        <!-- Danh sách Đội thi đấu -->
-        <div class="teams-section">
+        @{
+            var validation = ReadinessValidator.Validate(Room, _players, _teams.Select(t => t with { MemberCount = GetTeamMemberCount(t.TeamId) }).ToList());
+            var localPlayer = GetMyPlayer();
+            var canSelectAvatar = localPlayer is not null;
+        }
+
+        <div class="lobby-layout">
+            <!-- CỘT CHÍNH (TRÁI): CÁC ĐỘI & CẤU HÌNH ADMIN & CHỌN NGOẠI HÌNH -->
+            <div class="lobby-main-col">
+                <!-- Danh sách Đội thi đấu -->
+                <div class="teams-section">
             <div class="roster-header">
                 <h3>Các đội thi đấu (@_teams.Count)</h3>
                 <div class="roster-header-right">
@@ -140,7 +149,7 @@
                                         <span class="team-color-indicator" style="background-color: @team.Color"></span>
                                         <strong class="team-name">@team.Name</strong>
                                         <span class="team-capacity-badge">
-                                            @team.MemberCount / @team.Capacity người
+                                            @GetTeamMemberCount(team.TeamId) / @team.Capacity người
                                         </span>
                                         @if (IsAdmin)
                                         {
@@ -159,17 +168,17 @@
                                                         @onclick="() => StartEditTeam(team)">✏️</button>
                                                 <button class="icon-btn delete-btn"
                                                         title="Xóa đội"
-                                                        disabled="@(team.MemberCount > 0 || _isActionSubmitting)"
+                                                        disabled="@(GetTeamMemberCount(team.TeamId) > 0 || _isActionSubmitting)"
                                                         @onclick="() => RemoveTeam(team.TeamId)">🗑️</button>
                                             </div>
                                         }
                                     </div>
 
                                     var members = _players.Where(p => p.TeamId == team.TeamId).ToList();
-                                    var myPlayer = _players.FirstOrDefault(p => p.PlayerId == CurrentPlayerId);
+                                    var myPlayer = localPlayer;
                                     var isMyTeam = myPlayer?.TeamId == team.TeamId;
-                                    var isFull = team.MemberCount >= team.Capacity;
-                                    var canSelfSelect = (Room?.AllowSelfTeamSelection ?? true) && !string.IsNullOrEmpty(CurrentPlayerId) && CurrentPlayerId != "admin";
+                                    var isFull = GetTeamMemberCount(team.TeamId) >= team.Capacity;
+                                    var canSelfSelect = (Room?.AllowSelfTeamSelection ?? true) && (myPlayer is not null);
 
                                     <div class="team-members">
                                         @if (members.Count == 0)
@@ -183,9 +192,9 @@
                                                 {
                                                     var mAvatar = AvatarCatalog.Get(m.AvatarId) ?? AvatarCatalog.Get(AvatarCatalog.DefaultAvatarId);
                                                     var disc = AvatarCatalog.GetDiscriminator(m.PlayerId, _players);
-                                                    <span class="member-chip @(m.PlayerId == CurrentPlayerId ? "is-me" : "")">
+                                                    <span class="member-chip @(m.PlayerId == myPlayer?.PlayerId ? "is-me" : "")">
                                                         <span class="mini-sprite" style="background-image: url('@(mAvatar?.AssetPath)');"></span>
-                                                        @m.DisplayName@(string.IsNullOrEmpty(disc) ? "" : " " + disc) @(m.PlayerId == CurrentPlayerId ? "(Bạn)" : "")
+                                                        @m.DisplayName@(string.IsNullOrEmpty(disc) ? "" : " " + disc) @(m.PlayerId == myPlayer?.PlayerId ? "(Bạn)" : "")
                                                     </span>
                                                 }
                                             </div>
@@ -232,245 +241,301 @@
                             RoomId="@Room.RoomId"
                             AdminToken="@AdminToken"
                             OnTeamAdded="HandleTeamAdded" />
-                <div class="admin-start-bar" style="margin-top:12px">
-                    <button class="secondary-button" disabled="@_isActionSubmitting" @onclick="ToggleAdminCanPlay">
-                        @(Room.AdminCanPlay ? "TẮT ADMIN CHƠI" : "BẬT ADMIN CHƠI")
-                    </button>
-                    <button class="secondary-button" data-testid="toggle-end-on-first-finish" disabled="@_isActionSubmitting || Room.Status != RoomStatus.Lobby" @onclick="ToggleEndOnFirstFinish">
-                        @(Room.EndOnFirstFinish ? "TẮT KẾT THÚC KHI ĐỘI ĐẦU TIÊN XONG" : "BẬT KẾT THÚC KHI ĐỘI ĐẦU TIÊN XONG")
-                    </button>
-                    <small>@(Room.EndOnFirstFinish ? "Đội đầu tiên hoàn thành sẽ kết thúc trận cho tất cả." : "Các đội tiếp tục đến khi tất cả hoàn thành hoặc hết giờ.")</small>
+                <div class="admin-settings-card">
+                    <div class="admin-settings-header">
+                        <h4>✦ TÙY CHỌN TRẬN ĐẤU</h4>
+                        <span class="admin-settings-sub">Thiết lập luật thi đấu &amp; vai trò Admin</span>
+                    </div>
+
+                    <div class="admin-settings-grid">
+                        <div class="admin-setting-item">
+                            <div class="setting-action">
+                                <button class="secondary-button setting-toggle-btn @(Room.AdminCanPlay ? "is-active" : "")"
+                                        disabled="@_isActionSubmitting"
+                                        @onclick="ToggleAdminCanPlay">
+                                    @(Room.AdminCanPlay ? "TẮT ADMIN CHƠI" : "BẬT ADMIN CHƠI")
+                                </button>
+                            </div>
+                            <div class="setting-desc">
+                                @(Room.AdminCanPlay ? "Admin được phép vào một đội và tham gia giải đố như người chơi." : "Admin chỉ điều hành trận đấu, không tham gia vào đội nào.")
+                            </div>
+                        </div>
+
+                        <div class="admin-setting-item">
+                            <div class="setting-action">
+                                <button class="secondary-button setting-toggle-btn @(Room.EndOnFirstFinish ? "is-active" : "")"
+                                        data-testid="toggle-end-on-first-finish"
+                                        disabled="@_isActionSubmitting || Room.Status != RoomStatus.Lobby"
+                                        @onclick="ToggleEndOnFirstFinish">
+                                    @(Room.EndOnFirstFinish ? "TẮT KẾT THÚC KHI ĐỘI ĐẦU TIÊN XONG" : "BẬT KẾT THÚC KHI ĐỘI ĐẦU TIÊN XONG")
+                                </button>
+                            </div>
+                            <div class="setting-desc">
+                                @(Room.EndOnFirstFinish ? "Đội đầu tiên hoàn thành sẽ kết thúc trận cho tất cả." : "Các đội tiếp tục đến khi tất cả hoàn thành hoặc hết giờ.")
+                            </div>
+                        </div>
+                    </div>
+
                     @if (Room.AdminCanPlay && !_players.Any(p => p.IsAdmin))
                     {
-                        <select @bind="_adminPlayTeamId">
-                            @foreach (var team in _teams) { <option value="@team.TeamId">@team.Name</option> }
-                        </select>
-                        <input @bind="_adminPlayName" placeholder="Tên admin trong game" />
-                        <button class="primary-button small" disabled="@_isActionSubmitting" @onclick="JoinAdminAsPlayer">VÀO CHƠI</button>
+                        <div class="admin-join-box">
+                            <div class="admin-join-header">
+                                <strong>👤 Admin tham gia vào đội thi đấu:</strong>
+                                <small>Chọn đội và đặt tên nhân vật đại diện trong trận</small>
+                            </div>
+                            <div class="admin-join-row">
+                                <div class="admin-join-field">
+                                    <label>ĐỘI THI ĐẤU</label>
+                                    <select class="admin-join-select" @bind="_adminPlayTeamId">
+                                        @if (_teams.Count == 0)
+                                        {
+                                            <option value="">(Chưa có đội nào)</option>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var team in _teams)
+                                            {
+                                                <option value="@team.TeamId">@team.Name (@GetTeamMemberCount(team.TeamId)/@team.Capacity)</option>
+                                            }
+                                        }
+                                    </select>
+                                </div>
+                                <div class="admin-join-field flex-grow">
+                                    <label>TÊN HIỂN THỊ TRONG GAME</label>
+                                    <input class="admin-join-input" @bind="_adminPlayName" placeholder="Tên admin trong game" maxlength="24" />
+                                </div>
+                                <div class="admin-join-field action-field">
+                                    <button class="primary-button admin-join-btn"
+                                            disabled="@(_isActionSubmitting || string.IsNullOrWhiteSpace(_adminPlayTeamId))"
+                                            @onclick="JoinAdminAsPlayer">
+                                        VÀO CHƠI
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     }
                 </div>
             }
         </div>
 
-        <!-- Trạng thái Kiểm tra Sẵn sàng Thi đấu -->
-        @{
-            var validation = ReadinessValidator.Validate(Room, _players, _teams);
-        }
-        @if (validation.CanStart)
-        {
-            <div class="readiness-banner ready" role="status">
-                <div class="banner-icon">✓</div>
-                <div class="banner-body">
-                    <strong>Đủ điều kiện bắt đầu!</strong>
-                    <span>Tất cả thành viên trong các đội đã sẵn sàng thi đấu.</span>
-                </div>
+                @if (canSelectAvatar)
+                {
+                    <div class="avatar-section">
+                        <AvatarPicker SelectedAvatarId="@(localPlayer?.AvatarId ?? AvatarCatalog.DefaultAvatarId)"
+                                      CurrentPlayerId="@(localPlayer?.PlayerId ?? CurrentPlayerId)"
+                                      RoomPlayers="@_players"
+                                      Disabled="@_isActionSubmitting"
+                                      ErrorMessage="@_avatarActionError"
+                                      OnAvatarSelected="SelectAvatar" />
+                    </div>
+                }
             </div>
-        }
-        else
-        {
-            <div class="readiness-banner blocked" role="status">
-                <div class="banner-icon">⚠️</div>
-                <div class="banner-body">
-                    <strong>Chưa thể bắt đầu (@validation.BlockingReasons.Count điều kiện)</strong>
-                    <ul class="banner-reasons">
-                        @foreach (var r in validation.BlockingReasons)
-                        {
-                            <li>@r</li>
-                        }
-                    </ul>
-                </div>
-            </div>
-        }
 
-        @if (validation.Warnings.Count > 0)
-        {
-            <div class="readiness-banner warning" role="status">
-                <div class="banner-icon">ℹ️</div>
-                <div class="banner-body">
-                    <strong>Lưu ý đội hình:</strong>
-                    <ul class="banner-reasons">
-                        @foreach (var w in validation.Warnings)
-                        {
-                            <li>@w</li>
-                        }
-                    </ul>
-                </div>
-            </div>
-        }
-
-        @if (IsAdmin && validation.CanStart && Room?.Status == RoomStatus.Lobby)
-        {
-            <div class="admin-start-bar">
-                <button class="primary-button start-match-btn" data-testid="admin-start-match"
-                        disabled="@_isActionSubmitting"
-                        @onclick="StartMatch">
-                    🚀 BẮT ĐẦU TRẬN ĐẤU (3S)
-                </button>
-            </div>
-        }
-
-        @if (Room?.Status == RoomStatus.Countdown)
-        {
-            <div class="countdown-overlay" role="alert" aria-live="assertive">
-                <div class="countdown-card">
-                    <div class="countdown-icon">⏳</div>
-                    <h3>TRẬN ĐẤU SẮP BẮT ĐẦU!</h3>
-                    <div class="countdown-number">@_countdownRemainingSeconds</div>
-                    <p>Chuẩn bị bước vào thị trấn Minh Đăng cùng đồng đội...</p>
-                    @if (IsAdmin)
-                    {
-                        <button class="secondary-button cancel-countdown-btn"
+            <!-- CỘT PHỤ (PHẢI): BẮT ĐẦU TRẬN, ĐIỀU KIỆN, SẴN SÀNG & DANH SÁCH NGƯỜI CHƠI -->
+            <div class="lobby-sidebar-col">
+                @if (IsAdmin && validation.CanStart && Room?.Status == RoomStatus.Lobby)
+                {
+                    <div class="admin-start-bar" style="margin-top: 0; margin-bottom: 0;">
+                        <button class="primary-button start-match-btn" data-testid="admin-start-match"
                                 disabled="@_isActionSubmitting"
-                                @onclick="CancelCountdown">
-                            ✕ HỦY ĐẾM NGƯỢC
+                                @onclick="StartMatch">
+                            🚀 BẮT ĐẦU TRẬN ĐẤU (3S)
                         </button>
-                    }
-                </div>
-            </div>
-        }
+                    </div>
+                }
 
-        @if (!string.IsNullOrEmpty(_readyResetNotice))
-        {
-            <div class="ready-reset-toast" role="status">
-                <span>🔄 @_readyResetNotice</span>
-                <button type="button" class="close-toast-btn" @onclick="() => _readyResetNotice = null">✕</button>
-            </div>
-        }
+                @if (Room?.Status == RoomStatus.Countdown)
+                {
+                    <div class="countdown-overlay" role="alert" aria-live="assertive">
+                        <div class="countdown-card">
+                            <div class="countdown-icon">⏳</div>
+                            <h3>TRẬN ĐẤU SẮP BẮT ĐẦU!</h3>
+                            <div class="countdown-number">@_countdownRemainingSeconds</div>
+                            <p>Chuẩn bị bước vào thị trấn Minh Đăng cùng đồng đội...</p>
+                            @if (IsAdmin)
+                            {
+                                <button class="secondary-button cancel-countdown-btn"
+                                        disabled="@_isActionSubmitting"
+                                        @onclick="CancelCountdown">
+                                    ✕ HỦY ĐẾM NGƯỢC
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
 
-        @{
-            var canSelectAvatar = !string.IsNullOrEmpty(CurrentPlayerId) && _players.Any(p => p.PlayerId == CurrentPlayerId);
-            var localPlayer = _players.FirstOrDefault(p => p.PlayerId == CurrentPlayerId);
-        }
+                <!-- Trạng thái Kiểm tra Sẵn sàng Thi đấu -->
+                @if (validation.CanStart)
+                {
+                    <div class="readiness-banner ready" role="status">
+                        <div class="banner-icon">✓</div>
+                        <div class="banner-body">
+                            <strong>Đủ điều kiện bắt đầu!</strong>
+                            <span>Tất cả thành viên trong các đội đã sẵn sàng thi đấu.</span>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="readiness-banner blocked" role="status">
+                        <div class="banner-icon">⚠️</div>
+                        <div class="banner-body">
+                            <strong>Chưa thể bắt đầu (@validation.BlockingReasons.Count điều kiện)</strong>
+                            <ul class="banner-reasons">
+                                @foreach (var r in validation.BlockingReasons)
+                                {
+                                    <li>@r</li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                }
 
-        @if (localPlayer is not null && !string.IsNullOrEmpty(localPlayer.TeamId))
-        {
-            <div class="player-ready-bar">
-                <div class="ready-bar-info">
-                    @if (localPlayer.IsReady)
+                @if (validation.Warnings.Count > 0)
+                {
+                    <div class="readiness-banner warning" role="status">
+                        <div class="banner-icon">ℹ️</div>
+                        <div class="banner-body">
+                            <strong>Lưu ý đội hình:</strong>
+                            <ul class="banner-reasons">
+                                @foreach (var w in validation.Warnings)
+                                {
+                                    <li>@w</li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(_readyResetNotice))
+                {
+                    <div class="ready-reset-toast" role="status">
+                        <span>🔄 @_readyResetNotice</span>
+                        <button type="button" class="close-toast-btn" @onclick="() => _readyResetNotice = null">✕</button>
+                    </div>
+                }
+
+                @if (localPlayer is not null && !string.IsNullOrEmpty(localPlayer.TeamId))
+                {
+                    <div class="player-ready-bar">
+                        <div class="ready-bar-info">
+                            @if (localPlayer.IsReady)
+                            {
+                                <span class="ready-status-pill is-ready">● BẠN ĐÃ SẴN SÀNG</span>
+                                <small class="ready-status-desc">Nhấn để hủy sẵn sàng nếu cần đổi đội hoặc ngoại hình.</small>
+                            }
+                            else
+                            {
+                                <span class="ready-status-pill not-ready">○ BẠN CHƯA SẴN SÀNG</span>
+                                <small class="ready-status-desc">Bấm sẵn sàng khi bạn đã chọn xong đội và ngoại hình.</small>
+                            }
+                        </div>
+                        <button class="ready-toggle-btn @(localPlayer.IsReady ? "unready" : "ready")" data-testid="player-ready-toggle"
+                                disabled="@_isActionSubmitting"
+                                @onclick="ToggleMyReady">
+                            @(localPlayer.IsReady ? "✕ HỦY SẴN SÀNG" : "✓ TÔI SẴN SÀNG")
+                        </button>
+                    </div>
+                }
+
+                <!-- Danh sách Người chơi -->
+                <div class="player-roster">
+                    <div class="roster-header">
+                        <h3>Danh sách người chơi (@_players.Count)</h3>
+                        <span class="roster-hint">Đang chờ phân đội</span>
+                    </div>
+
+                    @if (_players.Count == 0)
                     {
-                        <span class="ready-status-pill is-ready">● BẠN ĐÃ SẴN SÀNG</span>
-                        <small class="ready-status-desc">Nhấn để hủy sẵn sàng nếu cần đổi đội hoặc ngoại hình.</small>
+                        <div class="empty-roster">Chưa có người chơi nào trong danh sách.</div>
                     }
                     else
                     {
-                        <span class="ready-status-pill not-ready">○ BẠN CHƯA SẴN SÀNG</span>
-                        <small class="ready-status-desc">Bấm sẵn sàng khi bạn đã chọn xong đội và ngoại hình.</small>
+                        <ul class="player-list">
+                            @foreach (var p in _players)
+                            {
+                                var isMe = p.PlayerId == (localPlayer?.PlayerId ?? CurrentPlayerId);
+                                var pAvatar = AvatarCatalog.Get(p.AvatarId) ?? AvatarCatalog.Get(AvatarCatalog.DefaultAvatarId);
+                                var pDisc = AvatarCatalog.GetDiscriminator(p.PlayerId, _players);
+                                <li class="player-item @(isMe ? "is-me" : "")" data-testid="player-row-@p.PlayerId">
+                                    <div class="player-avatar-preview-box" title="@(pAvatar?.DisplayName ?? "Avatar")">
+                                        <div class="pipoya-sprite dir-down" style="background-image: url('@(pAvatar?.AssetPath)');"></div>
+                                    </div>
+                                    <div class="player-info">
+                                        <div class="player-name-row">
+                                            <span class="player-name">
+                                                @p.DisplayName
+                                                @if (!string.IsNullOrEmpty(pDisc))
+                                                {
+                                                    <span class="discriminator-badge" title="Ký hiệu phân biệt khi trùng nhân vật">@pDisc</span>
+                                                }
+                                                @if (isMe)
+                                                {
+                                                    <small class="me-tag">(Bạn)</small>
+                                                }
+                                            </span>
+                                            @if (!string.IsNullOrEmpty(p.TeamId))
+                                            {
+                                                var pTeam = _teams.FirstOrDefault(t => t.TeamId == p.TeamId);
+                                                if (pTeam is not null)
+                                                {
+                                                    <span class="player-team-pill" style="border-color: @pTeam.Color; color: @pTeam.Color">
+                                                        ● @pTeam.Name
+                                                    </span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="player-team-pill unassigned">Chưa vào đội</span>
+                                            }
+                                        </div>
+                                        <span class="player-status @(p.IsReady ? "ready" : "waiting")">
+                                            @(p.IsReady ? "✓ Đã sẵn sàng" : "Chưa sẵn sàng")
+                                        </span>
+                                    </div>
+                                    @if (IsAdmin)
+                                    {
+                                        <div class="player-admin-actions">
+                                            <select class="admin-team-select"
+                                                    data-testid="admin-team-select-@p.PlayerId"
+                                                    value="@(p.TeamId ?? "")"
+                                                    disabled="@_isActionSubmitting"
+                                                    @onchange="(e) => MovePlayer(p.PlayerId, e)">
+                                                <option value="">-- Chưa vào đội --</option>
+                                                @foreach (var t in _teams)
+                                                {
+                                                    <option value="@t.TeamId">
+                                                        @t.Name (@GetTeamMemberCount(t.TeamId)/@t.Capacity)
+                                                    </option>
+                                                }
+                                            </select>
+                                            <button class="icon-btn kick-btn"
+                                                    data-testid="kick-player-@p.PlayerId"
+                                                    title="Đuổi khỏi phòng"
+                                                    disabled="@(_isActionSubmitting || p.PlayerId == (localPlayer?.PlayerId ?? CurrentPlayerId))"
+                                                    @onclick="() => KickPlayer(p.PlayerId)">❌</button>
+                                        </div>
+                                    }
+                                </li>
+                            }
+                        </ul>
                     }
                 </div>
-                <button class="ready-toggle-btn @(localPlayer.IsReady ? "unready" : "ready")" data-testid="player-ready-toggle"
-                        disabled="@_isActionSubmitting"
-                        @onclick="ToggleMyReady">
-                    @(localPlayer.IsReady ? "✕ HỦY SẴN SÀNG" : "✓ TÔI SẴN SÀNG")
-                </button>
-            </div>
-        }
 
-        @if (canSelectAvatar)
-        {
-            <div class="avatar-section">
-                <AvatarPicker SelectedAvatarId="@(localPlayer?.AvatarId ?? AvatarCatalog.DefaultAvatarId)"
-                              CurrentPlayerId="@CurrentPlayerId"
-                              RoomPlayers="@_players"
-                              Disabled="@_isActionSubmitting"
-                              ErrorMessage="@_avatarActionError"
-                              OnAvatarSelected="SelectAvatar" />
+                @if (IsAdmin)
+                {
+                    <div class="admin-lobby-notice">
+                        <p>✦ Bạn là Admin. Bạn có thể thêm, sửa tên/màu/sức chứa, đổi thứ tự và xóa đội rỗng ở trên.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="player-lobby-notice">
+                        <p>✦ Hãy chọn một đội thi đấu, chọn ngoại hình và bấm <strong>TÔI SẴN SÀNG</strong> khi bạn sẵn sàng.</p>
+                    </div>
+                }
             </div>
-        }
-
-        <!-- Danh sách Người chơi -->
-        <div class="roster-header">
-            <h3>Danh sách người chơi (@_players.Count)</h3>
-            <span class="roster-hint">Đang chờ phân đội</span>
         </div>
-
-        <div class="player-roster">
-            @if (_players.Count == 0)
-            {
-                <div class="empty-roster">Chưa có người chơi nào trong danh sách.</div>
-            }
-            else
-            {
-                <ul class="player-list">
-                    @foreach (var p in _players)
-                    {
-                        var isMe = p.PlayerId == CurrentPlayerId;
-                        var pAvatar = AvatarCatalog.Get(p.AvatarId) ?? AvatarCatalog.Get(AvatarCatalog.DefaultAvatarId);
-                        var pDisc = AvatarCatalog.GetDiscriminator(p.PlayerId, _players);
-                        <li class="player-item @(isMe ? "is-me" : "")">
-                            <div class="player-avatar-preview-box" title="@(pAvatar?.DisplayName ?? "Avatar")">
-                                <div class="pipoya-sprite dir-down" style="background-image: url('@(pAvatar?.AssetPath)');"></div>
-                            </div>
-                            <div class="player-info">
-                                <div class="player-name-row">
-                                    <span class="player-name">
-                                        @p.DisplayName
-                                        @if (!string.IsNullOrEmpty(pDisc))
-                                        {
-                                            <span class="discriminator-badge" title="Ký hiệu phân biệt khi trùng nhân vật">@pDisc</span>
-                                        }
-                                        @if (isMe)
-                                        {
-                                            <small class="me-tag">(Bạn)</small>
-                                        }
-                                    </span>
-                                    @if (!string.IsNullOrEmpty(p.TeamId))
-                                    {
-                                        var pTeam = _teams.FirstOrDefault(t => t.TeamId == p.TeamId);
-                                        if (pTeam is not null)
-                                        {
-                                            <span class="player-team-pill" style="border-color: @pTeam.Color; color: @pTeam.Color">
-                                                ● @pTeam.Name
-                                            </span>
-                                        }
-                                    }
-                                    else
-                                    {
-                                        <span class="player-team-pill unassigned">Chưa vào đội</span>
-                                    }
-                                </div>
-                                <span class="player-status @(p.IsReady ? "ready" : "waiting")">
-                                    @(p.IsReady ? "✓ Đã sẵn sàng" : "Chưa sẵn sàng")
-                                </span>
-                            </div>
-                            @if (IsAdmin)
-                            {
-                                <div class="player-admin-actions">
-                                    <select class="admin-team-select"
-                                            value="@(p.TeamId ?? "")"
-                                            disabled="@_isActionSubmitting"
-                                            @onchange="(e) => MovePlayer(p.PlayerId, e)">
-                                        <option value="">-- Chưa vào đội --</option>
-                                        @foreach (var t in _teams)
-                                        {
-                                            <option value="@t.TeamId">
-                                                @t.Name (@t.MemberCount/@t.Capacity)
-                                            </option>
-                                        }
-                                    </select>
-                                    <button class="icon-btn kick-btn"
-                                            title="Đuổi khỏi phòng"
-                                            disabled="@_isActionSubmitting"
-                                            @onclick="() => KickPlayer(p.PlayerId)">❌</button>
-                                </div>
-                            }
-                        </li>
-                    }
-                </ul>
-            }
-        </div>
-
-        @if (IsAdmin)
-        {
-            <div class="admin-lobby-notice">
-                <p>✦ Bạn là Admin. Bạn có thể thêm, sửa tên/màu/sức chứa, đổi thứ tự và xóa đội rỗng ở trên.</p>
-            </div>
-        }
-        else
-        {
-            <div class="player-lobby-notice">
-                <p>Đang chờ Admin chuẩn bị đội hình và bắt đầu cuộc thi…</p>
-            </div>
-        }
     </div>
 </section>
 
@@ -480,8 +545,13 @@
     [Parameter] public List<PlayerSnapshot> InitialPlayers { get; set; } = [];
     [Parameter] public List<TeamSnapshot> InitialTeams { get; set; } = [];
     [Parameter] public string? CurrentPlayerId { get; set; }
+    [Parameter] public EventCallback<string> OnCurrentPlayerIdChanged { get; set; }
     [Parameter] public bool IsAdmin { get; set; }
     [Parameter] public string? AdminToken { get; set; }
+
+    private PlayerSnapshot? GetMyPlayer() =>
+        _players.FirstOrDefault(p => p.PlayerId == CurrentPlayerId)
+        ?? (IsAdmin ? _players.FirstOrDefault(p => p.IsAdmin) : null);
 
     private static readonly string[] PresetColors =
     [
@@ -503,15 +573,32 @@
     private string? _adminPlayTeamId;
     private string _adminPlayName = "Quản trị viên";
 
+    private int GetTeamMemberCount(string teamId) => _players.Count(p => p.TeamId == teamId);
+
     protected override void OnParametersSet()
     {
-        if (_players.Count == 0 && InitialPlayers.Count > 0)
+        if (InitialPlayers.Count > 0 && (_players.Count == 0 || InitialPlayers.Count != _players.Count || !InitialPlayers.SequenceEqual(_players)))
         {
+            _players.Clear();
             _players.AddRange(InitialPlayers);
         }
-        if (_teams.Count == 0 && InitialTeams.Count > 0)
+        if (InitialTeams.Count > 0 && (_teams.Count == 0 || InitialTeams.Count != _teams.Count || !InitialTeams.SequenceEqual(_teams)))
         {
+            _teams.Clear();
             _teams.AddRange(InitialTeams);
+        }
+        if (string.IsNullOrWhiteSpace(_adminPlayTeamId) && _teams.Count > 0)
+        {
+            _adminPlayTeamId = _teams[0].TeamId;
+        }
+        if (IsAdmin && (string.IsNullOrEmpty(CurrentPlayerId) || CurrentPlayerId == "admin"))
+        {
+            var adminPlayer = _players.FirstOrDefault(p => p.IsAdmin);
+            if (adminPlayer is not null)
+            {
+                CurrentPlayerId = adminPlayer.PlayerId;
+                _ = OnCurrentPlayerIdChanged.InvokeAsync(adminPlayer.PlayerId);
+            }
         }
     }
 
@@ -764,12 +851,15 @@
 
     private async Task JoinTeam(string teamId)
     {
-        if (Connection is null || Room is null || string.IsNullOrEmpty(CurrentPlayerId)) return;
+        if (Connection is null || Room is null) return;
+        var myPlayer = GetMyPlayer();
+        var targetPlayerId = myPlayer?.PlayerId ?? CurrentPlayerId;
+        if (string.IsNullOrEmpty(targetPlayerId)) return;
         _teamActionError = null;
         _isActionSubmitting = true;
         try
         {
-            var req = new JoinTeamRequest(Room.RoomId, CurrentPlayerId, teamId);
+            var req = new JoinTeamRequest(Room.RoomId, targetPlayerId, teamId);
             var res = await Connection.JoinTeamAsync(req);
             if (!res.Success)
             {
@@ -784,12 +874,15 @@
 
     private async Task LeaveTeam()
     {
-        if (Connection is null || Room is null || string.IsNullOrEmpty(CurrentPlayerId)) return;
+        if (Connection is null || Room is null) return;
+        var myPlayer = GetMyPlayer();
+        var targetPlayerId = myPlayer?.PlayerId ?? CurrentPlayerId;
+        if (string.IsNullOrEmpty(targetPlayerId)) return;
         _teamActionError = null;
         _isActionSubmitting = true;
         try
         {
-            var req = new LeaveTeamRequest(Room.RoomId, CurrentPlayerId);
+            var req = new LeaveTeamRequest(Room.RoomId, targetPlayerId);
             var res = await Connection.LeaveTeamAsync(req);
             if (!res.Success)
             {
@@ -972,20 +1065,21 @@
 
     private async Task ToggleMyReady()
     {
-        if (Connection is null || Room is null || string.IsNullOrEmpty(CurrentPlayerId)) return;
-        var myPlayer = _players.FirstOrDefault(p => p.PlayerId == CurrentPlayerId);
+        if (Connection is null || Room is null) return;
+        var myPlayer = GetMyPlayer();
         if (myPlayer is null || string.IsNullOrEmpty(myPlayer.TeamId)) return;
 
+        var targetPlayerId = myPlayer.PlayerId;
         var newReady = !myPlayer.IsReady;
         _isActionSubmitting = true;
         _teamActionError = null;
         try
         {
-            var req = new SetReadyRequest(Room.RoomId, CurrentPlayerId, newReady);
+            var req = new SetReadyRequest(Room.RoomId, targetPlayerId, newReady);
             var res = await Connection.SetReadyAsync(req);
             if (res.Success)
             {
-                var idx = _players.FindIndex(p => p.PlayerId == CurrentPlayerId);
+                var idx = _players.FindIndex(p => p.PlayerId == targetPlayerId);
                 if (idx >= 0)
                 {
                     _players[idx] = _players[idx] with { IsReady = res.IsReady };
@@ -1064,23 +1158,27 @@
 
     private async Task SelectAvatar(string avatarId)
     {
-        if (Connection is null || Room is null || string.IsNullOrEmpty(CurrentPlayerId)) return;
+        if (Connection is null || Room is null) return;
+        var myPlayer = GetMyPlayer();
+        if (myPlayer is null) return;
+
+        var targetPlayerId = myPlayer.PlayerId;
         _avatarActionError = null;
         _isActionSubmitting = true;
         try
         {
-            var req = new SelectAvatarRequest(Room.RoomId, CurrentPlayerId, avatarId);
+            var req = new SelectAvatarRequest(Room.RoomId, targetPlayerId, avatarId);
             var res = await Connection.SelectAvatarAsync(req);
             if (res.Success && res.AvatarId is not null)
             {
-                var idx = _players.FindIndex(p => p.PlayerId == CurrentPlayerId);
+                var idx = _players.FindIndex(p => p.PlayerId == targetPlayerId);
                 if (idx >= 0)
                 {
                     _players[idx] = _players[idx] with { AvatarId = res.AvatarId };
                     StateHasChanged();
                 }
             }
-            else
+            else if (!res.Success)
             {
                 _avatarActionError = res.ErrorCode switch
                 {
@@ -1089,6 +1187,7 @@
                     RoomErrorCodes.InvalidRoomStatus => "Không thể đổi ngoại hình lúc này.",
                     _ => "Không thể chọn ngoại hình (" + (res.ErrorCode ?? "UNKNOWN") + ")."
                 };
+                StateHasChanged();
             }
         }
         finally
@@ -1158,7 +1257,14 @@
         try
         {
             var result = await Connection.AdminSetCanPlayAsync(new AdminSetCanPlayRequest(Room.RoomId, AdminToken, !Room.AdminCanPlay, Guid.NewGuid().ToString("N")));
-            if (result.Success) Room = Room with { AdminCanPlay = result.AdminCanPlay };
+            if (result.Success)
+            {
+                Room = Room with { AdminCanPlay = result.AdminCanPlay };
+                if (result.AdminCanPlay && string.IsNullOrWhiteSpace(_adminPlayTeamId) && _teams.Count > 0)
+                {
+                    _adminPlayTeamId = _teams[0].TeamId;
+                }
+            }
             else _teamActionError = result.ErrorCode;
         }
         finally { _isActionSubmitting = false; }
@@ -1168,13 +1274,26 @@
     {
         if (Connection is null || Room is null || string.IsNullOrWhiteSpace(AdminToken)) return;
         _isActionSubmitting = true;
+        _teamActionError = null;
         try
         {
             var result = await Connection.AdminSetEndOnFirstFinishAsync(new AdminSetEndOnFirstFinishRequest(Room.RoomId, AdminToken, !Room.EndOnFirstFinish, Guid.NewGuid().ToString("N")));
-            if (result.Success) Room = Room with { EndOnFirstFinish = result.EndOnFirstFinish };
-            else _teamActionError = result.ErrorCode;
+            if (result.Success)
+            {
+                Room = Room with { EndOnFirstFinish = result.EndOnFirstFinish };
+                StateHasChanged();
+            }
+            else
+            {
+                _teamActionError = $"Không thể đổi cài đặt: {result.ErrorCode}";
+                StateHasChanged();
+            }
         }
-        finally { _isActionSubmitting = false; }
+        finally
+        {
+            _isActionSubmitting = false;
+            StateHasChanged();
+        }
     }
 
     private async Task JoinAdminAsPlayer()
@@ -1186,7 +1305,13 @@
             var result = await Connection.AdminJoinAsPlayerAsync(new AdminJoinAsPlayerRequest(Room.RoomId, AdminToken, _adminPlayTeamId, _adminPlayName, "quang", Guid.NewGuid().ToString("N")));
             if (result.Success && result.PlayerId is not null)
             {
-                _players.Add(new PlayerSnapshot(result.PlayerId, _adminPlayName, _adminPlayTeamId, "quang", "#deb783", false, true, true));
+                CurrentPlayerId = result.PlayerId;
+                await OnCurrentPlayerIdChanged.InvokeAsync(result.PlayerId);
+                if (!_players.Any(p => p.PlayerId == result.PlayerId))
+                {
+                    _players.Add(new PlayerSnapshot(result.PlayerId, _adminPlayName, _adminPlayTeamId, "quang", "#deb783", false, true, true));
+                }
+                StateHasChanged();
             }
             else _teamActionError = result.ErrorCode;
         }

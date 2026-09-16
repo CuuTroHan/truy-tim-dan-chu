@@ -44,7 +44,13 @@ public sealed class RoomManager
     public bool IsAdminConnectionBound(string roomId, string token, string connectionId)
     {
         var room = GetRoomById(roomId);
-        return room is not null && room.VerifyAdmin(token) && string.Equals(room.AdminConnectionId, connectionId, StringComparison.Ordinal);
+        if (room is null || !room.VerifyAdmin(token)) return false;
+        if (string.IsNullOrEmpty(room.AdminConnectionId))
+        {
+            room.AdminConnectionId = connectionId;
+            return true;
+        }
+        return string.Equals(room.AdminConnectionId, connectionId, StringComparison.Ordinal);
     }
 
     public RoomManager(IOptions<RoomServerOptions>? options = null, IRoomCodeGenerator? codeGenerator = null, TimeProvider? timeProvider = null, ReservationService? reservations = null, IMatchStore? store = null)
@@ -658,10 +664,8 @@ public sealed class RoomManager
         if (_newMatchCommands.TryGetValue(cacheKey, out var replay)) return replay;
         var room = GetRoomById(request.RoomId);
         if (room is null) return new AdminNewMatchResponse(false, RoomErrorCodes.RoomNotFound, null, null, null);
-        if (!room.VerifyAdmin(request.AdminToken))
-            return new AdminNewMatchResponse(false, RoomErrorCodes.UnauthorizedAdmin, null, null, null);
-        if (!string.Equals(room.AdminConnectionId, connectionId, StringComparison.Ordinal))
-            return new AdminNewMatchResponse(false, RoomErrorCodes.AdminNotBound, null, null, null);
+        if (!IsAdminConnectionBound(request.RoomId, request.AdminToken, connectionId))
+            return new AdminNewMatchResponse(false, room.VerifyAdmin(request.AdminToken) ? RoomErrorCodes.AdminNotBound : RoomErrorCodes.UnauthorizedAdmin, null, null, null);
         if (_store is not null && room.Results is null)
             return new AdminNewMatchResponse(false, RoomErrorCodes.PersistenceUnavailable, null, null, null);
         if (!room.TryPrepareNewMatch(out var snapshot))

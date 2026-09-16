@@ -48,7 +48,8 @@ public static class ReadinessValidator
             blocking.Add($"Còn {notReady.Count} thành viên trong đội chưa sẵn sàng.");
         }
 
-        var emptyTeams = teams.Where(t => t.MemberCount == 0).ToList();
+        int GetCount(TeamSnapshot t) => players.Count > 0 ? players.Count(p => p.TeamId == t.TeamId) : t.MemberCount;
+        var emptyTeams = teams.Where(t => GetCount(t) == 0).ToList();
         if (emptyTeams.Count > 0)
         {
             blocking.Add($"Đội '{emptyTeams[0].Name}' chưa có thành viên nào tham gia.");
@@ -57,10 +58,10 @@ public static class ReadinessValidator
         // Warnings for uneven team sizes
         if (teams.Count >= 2 && emptyTeams.Count == 0)
         {
-            var distinctCounts = teams.Select(t => t.MemberCount).Distinct().ToList();
+            var distinctCounts = teams.Select(GetCount).Distinct().ToList();
             if (distinctCounts.Count > 1)
             {
-                var summary = string.Join(", ", teams.Select(t => $"{t.Name}: {t.MemberCount} người"));
+                var summary = string.Join(", ", teams.Select(t => $"{t.Name}: {GetCount(t)} người"));
                 warnings.Add($"Số lượng thành viên giữa các đội không đồng đều ({summary}).");
             }
         }

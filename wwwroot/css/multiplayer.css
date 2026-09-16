@@ -4,17 +4,36 @@
 
 /* Shell & Container */
 .online-shell {
-    min-height: 100vh;
-    height: 100%;
+    position: fixed;
+    inset: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    padding: 32px 16px;
+    padding: 32px 16px 64px;
     background: radial-gradient(ellipse at top, #24464d 0%, #10232a 100%);
     font-family: "Be Vietnam Pro", system-ui, sans-serif;
     color: #f5e9cf;
     box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
+}
+
+.online-shell::-webkit-scrollbar {
+    width: 8px;
+}
+
+.online-shell::-webkit-scrollbar-track {
+    background: rgba(13, 31, 39, 0.6);
+}
+
+.online-shell::-webkit-scrollbar-thumb {
+    background: #2e5461;
+    border-radius: 4px;
+}
+
+.online-shell::-webkit-scrollbar-thumb:hover {
+    background: #deb783;
 }
 
 .online-card {
@@ -25,6 +44,14 @@
     background: #142e39;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     box-sizing: border-box;
+    transition: width 0.25s ease, max-width 0.25s ease;
+    margin-bottom: 48px;
+}
+
+.online-card.lobby-wide {
+    width: min(1360px, 96vw) !important;
+    max-width: 1360px !important;
+    padding: 28px 36px;
 }
 
 .online-card h1 {
@@ -385,6 +412,47 @@
     box-sizing: border-box;
 }
 
+.lobby-layout {
+    display: grid;
+    grid-template-columns: minmax(480px, 1.4fr) minmax(340px, 1fr);
+    gap: 24px;
+    align-items: start;
+    margin-top: 18px;
+}
+
+.lobby-main-col {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
+}
+
+.lobby-sidebar-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.lobby-sidebar-col .readiness-banner {
+    margin-top: 0;
+}
+
+.lobby-sidebar-col .player-ready-bar {
+    margin-top: 0;
+}
+
+.lobby-sidebar-col .player-roster {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+@media (max-width: 1100px) {
+    .lobby-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
 .lobby-header {
     display: flex;
     align-items: center;
@@ -466,6 +534,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
     margin-bottom: 14px;
 }
 
@@ -479,7 +549,8 @@
 .roster-header-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .admin-policy-toggle {
@@ -1413,6 +1484,212 @@
     opacity: 0.5;
     cursor: not-allowed;
     transform: none;
+}
+
+/* =========================================================
+   ADMIN MATCH SETTINGS & JOIN CARD
+   ========================================================= */
+
+.admin-settings-card {
+    margin-top: 20px;
+    background: #0d1e26;
+    border: 1px solid #284752;
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    box-sizing: border-box;
+}
+
+.admin-settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #1e3d47;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.admin-settings-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #f7ce84;
+}
+
+.admin-settings-sub {
+    font-size: 12px;
+    color: #8da7a0;
+}
+
+.admin-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.admin-setting-item {
+    background: #142932;
+    border: 1px solid #244450;
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.admin-setting-item .setting-action {
+    display: flex;
+}
+
+.admin-setting-item .setting-toggle-btn {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    border-radius: 6px;
+    text-align: center;
+    justify-content: center;
+    transition: all 0.2s;
+    min-height: 42px;
+    background: #18333e;
+    border: 2px solid #3c616b;
+    color: #deb783;
+}
+
+.admin-setting-item .setting-toggle-btn:hover:not(:disabled) {
+    background: #254d5c;
+    border-color: #f7ce84;
+    color: #ffffff;
+}
+
+.admin-setting-item .setting-toggle-btn.is-active {
+    background: #1b4733;
+    border-color: #4caf50;
+    color: #c8e6c9;
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.2);
+}
+
+.admin-setting-item .setting-desc {
+    font-size: 12px;
+    line-height: 1.45;
+    color: #a4c2bb;
+}
+
+/* Admin Join Team Box */
+.admin-join-box {
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: #122c36;
+    border: 1px solid #2e5563;
+    border-radius: 8px;
+}
+
+.admin-join-header {
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.admin-join-header strong {
+    font-size: 13px;
+    color: #ffd78a;
+}
+
+.admin-join-header small {
+    font-size: 12px;
+    color: #8da7a0;
+}
+
+.admin-join-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.admin-join-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.admin-join-field label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #deb783;
+    text-transform: uppercase;
+}
+
+.admin-join-field.flex-grow {
+    flex: 1;
+    min-width: 180px;
+}
+
+.admin-join-select {
+    padding: 8px 12px;
+    background: #09171e;
+    border: 1px solid #3c616b;
+    border-radius: 6px;
+    color: #f7ce84;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    outline: none;
+    height: 40px;
+    box-sizing: border-box;
+    cursor: pointer;
+    min-width: 180px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.admin-join-select:focus {
+    border-color: #f7ce84;
+    box-shadow: 0 0 0 2px rgba(247, 206, 132, 0.2);
+}
+
+.admin-join-select option {
+    background: #0d1e26;
+    color: #ffffff;
+}
+
+.admin-join-input {
+    padding: 8px 12px;
+    background: #09171e;
+    border: 1px solid #3c616b;
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    height: 40px;
+    box-sizing: border-box;
+    width: 100%;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.admin-join-input:focus {
+    border-color: #f7ce84;
+    box-shadow: 0 0 0 2px rgba(247, 206, 132, 0.2);
+}
+
+.admin-join-btn {
+    height: 40px;
+    padding: 0 20px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* =========================================================

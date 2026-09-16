@@ -402,6 +402,8 @@ public sealed class RoomHub : Hub
         if (response.Success && response.Room is not null)
         {
             await Clients.Group($"room_{request.RoomId}").SendAsync("RoomStateUpdated", response.Room);
+            if (response.Teams is not null)
+                await Clients.Group($"room_{request.RoomId}").SendAsync("TeamsReordered", response.Teams);
             await Clients.Group($"room_{request.RoomId}").SendAsync("ReadyReset", "Lượt thi mới đã sẵn sàng.");
         }
         return response;

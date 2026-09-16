@@ -50,7 +50,7 @@ else if (_currentRoom?.Status == RoomStatus.Finished && _matchResults is not nul
 else
 {
     <main class="online-shell">
-        <section class="online-card" aria-labelledby="online-title">
+        <section class="online-card @(_currentRoom is not null ? "lobby-wide" : "")" aria-labelledby="online-title">
             <div class="modal-kicker">TRUY TÌM DÂN CHỦ</div>
             <h1 id="online-title">Chơi online</h1>
             <p>Kết nối máy chủ để chuẩn bị hành trình cùng đồng đội.</p>
@@ -75,6 +75,7 @@ else
                            InitialPlayers="_currentPlayers"
                            InitialTeams="_currentTeams"
                            CurrentPlayerId="@_myPlayerId"
+                           OnCurrentPlayerIdChanged="HandleCurrentPlayerIdChanged"
                            IsAdmin="_isAdmin"
                            AdminToken="@_adminToken" />
                 }
@@ -225,8 +226,23 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
-    private void OnMatchPaused(MatchPausedEvent ev) => InvokeAsync(StateHasChanged);
-    private void OnMatchResumed(MatchResumedEvent ev) => InvokeAsync(StateHasChanged);
+    private void OnMatchPaused(MatchPausedEvent ev)
+    {
+        InvokeAsync(() =>
+        {
+            if (_currentRoom is not null) _currentRoom = _currentRoom with { Status = RoomStatus.Paused };
+            StateHasChanged();
+        });
+    }
+
+    private void OnMatchResumed(MatchResumedEvent ev)
+    {
+        InvokeAsync(() =>
+        {
+            if (_currentRoom is not null) _currentRoom = _currentRoom with { Status = RoomStatus.Playing };
+            StateHasChanged();
+        });
+    }
 
     private void OnRoomStateUpdated(RoomSnapshot snapshot)
     {
@@ -349,6 +365,13 @@ else
         StartHeartbeat();
     }
 
+    private async Task HandleCurrentPlayerIdChanged(string newPlayerId)
+    {
+        _myPlayerId = newPlayerId;
+        await SaveStorageAsync("ttdc_player_id", newPlayerId);
+        StateHasChanged();
+    }
+
     private void LeaveLobby()
     {
         ClearLocalRoom();
@@ -387,9 +410,19 @@ else
 
         _currentRoom = response.Room;
         _matchResults = response.Results;
-        _myPlayerId = response.PlayerId;
-        _isAdmin = false;
-        _adminToken = null;
+        var storedAdminRoom = await ReadStorageAsync("ttdc_admin_room");
+        var storedAdminToken = await ReadStorageAsync("ttdc_admin_token");
+        var isThisRoomAdmin = !string.IsNullOrWhiteSpace(storedAdminToken) && string.Equals(storedAdminRoom, response.Room.RoomId, StringComparison.Ordinal);
+        if (isThisRoomAdmin)
+        {
+            _isAdmin = true;
+            _adminToken = storedAdminToken;
+        }
+        else if (!_isAdmin || _adminToken is null)
+        {
+            _isAdmin = false;
+            _adminToken = null;
+        }
         _currentPlayers = response.Players?.ToList() ?? [];
         _currentTeams = response.Teams?.ToList() ?? [];
         _reconnectRoomCode = response.Room.RoomCode;
