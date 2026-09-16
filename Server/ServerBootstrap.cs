@@ -132,7 +132,9 @@ public static class ServerBootstrap
             var filename = CsvExport.SanitizeFilename($"{roomId}-{matchId}-results") + ".csv";
             return Results.File(bytes, "text/csv; charset=utf-8", filename);
         });
-        if (app.Environment.IsDevelopment())
+        var enableDev = app.Environment.IsDevelopment() ||
+                        app.Configuration.GetValue<bool>("Multiplayer:EnableDevEndpoints", true);
+        if (enableDev)
         {
             app.MapPost("/dev/prepare-draft", (RoomManager rm, IHubContext<RoomHub> hub, string roomId, string teamId) =>
             {

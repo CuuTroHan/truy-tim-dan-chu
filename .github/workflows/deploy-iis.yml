@@ -113,8 +113,8 @@ jobs:
           Set-ItemProperty "IIS:\Sites\TruyTimDanChu" -Name physicalPath -Value $targetDir
           Set-ItemProperty "IIS:\Sites\TruyTimDanChu" -Name applicationPool -Value "TruyTimDanChu"
 
-          # Dat file app_offline.htm de IIS giai phong tai nguyen va file dll dang chay
-          Write-Host "Tam dung ung dung IIS bang app_offline.htm..." -ForegroundColor Yellow
+          # Dat file app_offline.htm va tam dung AppPool de IIS giai phong tai nguyen va lock DLL
+          Write-Host "Tam dung ung dung IIS bang app_offline.htm va Stop-WebAppPool..." -ForegroundColor Yellow
           $offlineHtml = @"
           <!DOCTYPE html>
           <html>
@@ -126,11 +126,29 @@ jobs:
           </html>
           "@
           Set-Content -Path "$targetDir\app_offline.htm" -Value $offlineHtml -Encoding UTF8
-          Start-Sleep -Seconds 2
+          if (Get-Item "IIS:\AppPools\TruyTimDanChu" -ErrorAction SilentlyContinue) {
+              try {
+                  Write-Host "Tam dung AppPool TruyTimDanChu..." -ForegroundColor Yellow
+                  Stop-WebAppPool -Name "TruyTimDanChu"
+              } catch {
+                  Write-Host "Canh bao khi dung AppPool: $($_.Exception.Message)" -ForegroundColor Gray
+              }
+          }
+          Start-Sleep -Seconds 4
 
-          # Copy toan bo file build moi vao thu muc IIS
-          Write-Host "Dang copy file moi vao $targetDir..." -ForegroundColor Green
-          Copy-Item -Path "$sourceDir\*" -Destination $targetDir -Recurse -Force -ErrorAction Stop
+          # Copy file build moi voi co che retry neu co DLL dang giai phong handle
+          $maxRetries = 5
+          for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+              try {
+                  Write-Host "Dang copy file moi vao $targetDir (lan $attempt/$maxRetries)..." -ForegroundColor Green
+                  Copy-Item -Path "$sourceDir\*" -Destination $targetDir -Recurse -Force -ErrorAction Stop
+                  break
+              } catch {
+                  if ($attempt -eq $maxRetries) { throw $_ }
+                  Write-Host "File dang bi khoa ($($_.Exception.Message)), doi 3 giay roi thu lai..." -ForegroundColor Yellow
+                  Start-Sleep -Seconds 3
+              }
+          }
 
           foreach ($file in @(
               "$targetDir\web.config",
@@ -141,14 +159,17 @@ jobs:
           }
           Write-Host "Deploy file verification PASSED" -ForegroundColor Green
 
-          # Xoa app_offline.htm de IIS tu dong nap lai ung dung moi
-          Write-Host "Khoi dong lai ung dung bang cach go app_offline.htm..." -ForegroundColor Green
+          # Xoa app_offline.htm va khoi dong lai AppPool de ung dung hoat dong
+          Write-Host "Khoi dong lai ung dung..." -ForegroundColor Green
           Remove-Item -Path "$targetDir\app_offline.htm" -Force -ErrorAction SilentlyContinue
 
-          # Recycle AppPool TruyTimDanChu de lam moi ung dung
           if (Get-Item "IIS:\AppPools\TruyTimDanChu" -ErrorAction SilentlyContinue) {
-              Write-Host "Dang recycle AppPool 'TruyTimDanChu'..." -ForegroundColor Cyan
-              Restart-WebAppPool -Name "TruyTimDanChu"
+              Write-Host "Dang khoi dong AppPool 'TruyTimDanChu'..." -ForegroundColor Cyan
+              try {
+                  Start-WebAppPool -Name "TruyTimDanChu"
+              } catch {
+                  Restart-WebAppPool -Name "TruyTimDanChu"
+              }
           } else {
               throw "IIS AppPool TruyTimDanChu khong ton tai."
           }
