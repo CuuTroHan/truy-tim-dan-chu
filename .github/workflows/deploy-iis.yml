@@ -194,15 +194,26 @@ jobs:
               }
           }
 
-          # Kiem tra health check voi co che polling retry
+          # Kiem tra health check voi co che polling retry (ho tro ca port 80 domain va port 5080)
           $healthOk = $false
           $readyOk = $false
           for ($check = 1; $check -le 10; $check++) {
               Start-Sleep -Seconds 2
               try {
-                  $health = Invoke-WebRequest -Uri "http://127.0.0.1:5080/health" -UseBasicParsing -TimeoutSec 3
-                  $ready = Invoke-WebRequest -Uri "http://127.0.0.1:5080/ready" -UseBasicParsing -TimeoutSec 3
-                  if ($health.StatusCode -eq 200 -and $ready.StatusCode -eq 200) {
+                  $headers = @{ Host = "truytimdanchu.site" }
+                  $health = $null
+                  try {
+                      $health = Invoke-WebRequest -Uri "http://127.0.0.1/health" -Headers $headers -UseBasicParsing -TimeoutSec 3
+                  } catch {
+                      $health = Invoke-WebRequest -Uri "http://127.0.0.1:5080/health" -UseBasicParsing -TimeoutSec 3
+                  }
+                  $ready = $null
+                  try {
+                      $ready = Invoke-WebRequest -Uri "http://127.0.0.1/ready" -Headers $headers -UseBasicParsing -TimeoutSec 3
+                  } catch {
+                      $ready = Invoke-WebRequest -Uri "http://127.0.0.1:5080/ready" -UseBasicParsing -TimeoutSec 3
+                  }
+                  if ($health -and $ready -and $health.StatusCode -eq 200 -and $ready.StatusCode -eq 200) {
                       $healthOk = $true
                       $readyOk = $true
                       break
