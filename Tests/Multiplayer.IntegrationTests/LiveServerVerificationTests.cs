@@ -11,7 +11,8 @@ namespace Multiplayer.IntegrationTests;
 public sealed class LiveServerVerificationTests
 {
     private readonly ITestOutputHelper _output;
-    private const string BaseUrl = "http://160.250.246.174:5080";
+    private const string BaseUrl = "http://160.250.246.174";
+    private const string HostHeader = "truytimdanchu.site";
 
     public LiveServerVerificationTests(ITestOutputHelper output)
     {
@@ -22,6 +23,7 @@ public sealed class LiveServerVerificationTests
     public async Task Verify_Issue1_AppCss_HasReservationProofMargin()
     {
         using var http = new HttpClient();
+        http.DefaultRequestHeaders.Host = HostHeader;
         var css = await http.GetStringAsync($"{BaseUrl}/css/app.css");
         Assert.Contains(".reservation-proof", css);
         Assert.Contains("margin:16px 0 12px", css);
@@ -32,11 +34,14 @@ public sealed class LiveServerVerificationTests
     public async Task Verify_Issues_2_3_4_5_CompleteGameFlow_OnLiveServer()
     {
         using var http = new HttpClient();
+        http.DefaultRequestHeaders.Host = HostHeader;
         var health = await http.GetAsync($"{BaseUrl}/health");
         Assert.True(health.IsSuccessStatusCode, "Remote server health check failed.");
 
         var hubUrl = $"{BaseUrl}{ConnectionProtocol.HubPath}";
-        await using var adminHub = new HubConnectionBuilder().WithUrl(hubUrl).Build();
+        await using var adminHub = new HubConnectionBuilder()
+            .WithUrl(hubUrl, options => options.Headers.Add("Host", HostHeader))
+            .Build();
         await adminHub.StartAsync();
 
         var handshake = await adminHub.InvokeAsync<HandshakeResponse>("Handshake", ConnectionProtocol.Current);
@@ -81,7 +86,9 @@ public sealed class LiveServerVerificationTests
         _output.WriteLine($"Admin joined Team 1 as player: {adminPlayerId}");
 
         // 5. Connect Player 2 to Team 2
-        await using var player2Hub = new HubConnectionBuilder().WithUrl(hubUrl).Build();
+        await using var player2Hub = new HubConnectionBuilder()
+            .WithUrl(hubUrl, options => options.Headers.Add("Host", HostHeader))
+            .Build();
         await player2Hub.StartAsync();
         await player2Hub.InvokeAsync<HandshakeResponse>("Handshake", ConnectionProtocol.Current);
         var p2Join = await player2Hub.InvokeAsync<JoinRoomResponse>("JoinRoom", new JoinRoomRequest(roomCode, "PlayerBinh"));
