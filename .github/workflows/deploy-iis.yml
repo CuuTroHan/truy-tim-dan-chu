@@ -117,11 +117,10 @@ jobs:
           try {
               $binding80 = Get-WebBinding -Name "TruyTimDanChu" -Port 80 -ErrorAction SilentlyContinue
               if (-not $binding80) {
-                  Write-Host "Dang cau hinh binding port 80 cho site TruyTimDanChu de ket noi Cloudflare..." -ForegroundColor Cyan
-                  if (Get-Item "IIS:\Sites\Default Web Site" -ErrorAction SilentlyContinue) {
-                      Stop-WebSite -Name "Default Web Site" -ErrorAction SilentlyContinue
-                  }
-                  New-WebBinding -Name "TruyTimDanChu" -Port 80 -Protocol "http" -IPAddress "*"
+                  Write-Host "Dang cau hinh binding port 80 cho site TruyTimDanChu..." -ForegroundColor Cyan
+                  # Xoa binding port 80 o Default Web Site neu co de tranh xung dot
+                  Get-WebBinding -Name "Default Web Site" -Port 80 -ErrorAction SilentlyContinue | Remove-WebBinding -ErrorAction SilentlyContinue
+                  New-WebBinding -Name "TruyTimDanChu" -Port 80 -Protocol "http" -IPAddress "*" -ErrorAction SilentlyContinue
                   Write-Host "-> Da them binding port 80 cho TruyTimDanChu thanh cong!" -ForegroundColor Green
               }
           } catch {
@@ -174,7 +173,7 @@ jobs:
           }
           Write-Host "Deploy file verification PASSED" -ForegroundColor Green
 
-          # Xoa app_offline.htm va khoi dong lai AppPool de ung dung hoat dong
+          # Xoa app_offline.htm va khoi dong lai ca AppPool va WebSite de ung dung hoat dong
           Write-Host "Khoi dong lai ung dung..." -ForegroundColor Green
           Remove-Item -Path "$targetDir\app_offline.htm" -Force -ErrorAction SilentlyContinue
 
@@ -185,18 +184,38 @@ jobs:
               } catch {
                   Restart-WebAppPool -Name "TruyTimDanChu"
               }
-          } else {
-              throw "IIS AppPool TruyTimDanChu khong ton tai."
+          }
+          if (Get-Item "IIS:\Sites\TruyTimDanChu" -ErrorAction SilentlyContinue) {
+              Write-Host "Dang khoi dong WebSite 'TruyTimDanChu'..." -ForegroundColor Cyan
+              try {
+                  Start-WebSite -Name "TruyTimDanChu"
+              } catch {
+                  Write-Host "Canh bao khi khoi dong WebSite: $($_.Exception.Message)" -ForegroundColor Yellow
+              }
           }
 
-          Start-Sleep -Seconds 5
-          $health = Invoke-WebRequest -Uri "http://127.0.0.1:5080/health" -UseBasicParsing
-          $ready = Invoke-WebRequest -Uri "http://127.0.0.1:5080/ready" -UseBasicParsing
-          if ($health.StatusCode -ne 200 -or $ready.StatusCode -ne 200) {
-              throw "Health check that bai: health=$($health.StatusCode), ready=$($ready.StatusCode)"
+          # Kiem tra health check voi co che polling retry
+          $healthOk = $false
+          $readyOk = $false
+          for ($check = 1; $check -le 10; $check++) {
+              Start-Sleep -Seconds 2
+              try {
+                  $health = Invoke-WebRequest -Uri "http://127.0.0.1:5080/health" -UseBasicParsing -TimeoutSec 3
+                  $ready = Invoke-WebRequest -Uri "http://127.0.0.1:5080/ready" -UseBasicParsing -TimeoutSec 3
+                  if ($health.StatusCode -eq 200 -and $ready.StatusCode -eq 200) {
+                      $healthOk = $true
+                      $readyOk = $true
+                      break
+                  }
+              } catch {
+                  Write-Host "Cho website khoi dong (lan $check/10): $($_.Exception.Message)" -ForegroundColor Yellow
+              }
+          }
+          if (-not $healthOk -or -not $readyOk) {
+              throw "Health check that bai sau 10 lan kiem tra."
           }
 
           # Don dep thu muc tam sau khi health check thanh cong
           Remove-Item -Path "C:\TempDeploy" -Recurse -Force -ErrorAction SilentlyContinue
 
-          Write-Host "Auto-Deploy hoan tat thanh cong: health=$($health.StatusCode), ready=$($ready.StatusCode)" -ForegroundColor Green
+          Write-Host "Auto-Deploy hoan tat thanh cong!" -ForegroundColor Green
