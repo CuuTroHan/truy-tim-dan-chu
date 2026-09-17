@@ -17,6 +17,7 @@ public sealed class MovementReconciler
     public const int MaxBufferSize = 60;
     public const float SoftCorrectionThreshold = 2.0f;
     public const float SnapThreshold = 10.0f;
+    private const float CorrectionBlend = 0.18f;
 
     public int LastAckedSequence { get; private set; }
 
@@ -90,9 +91,18 @@ public sealed class MovementReconciler
             }
             else if (distSq > SoftCorrectionThreshold * SoftCorrectionThreshold)
             {
-                // Sai lệch vừa (2px - 10px): sửa về vị trí replay
-                player.X = curX;
-                player.Y = curY;
+                // Khi đang di chuyển, ACK có thể về muộn hơn input hiện tại.
+                // Hiệu chỉnh dần thay vì kéo giật nhân vật về vị trí cũ.
+                if (player.Walking != 0 || curWalking != 0)
+                {
+                    player.X += dx * CorrectionBlend;
+                    player.Y += dy * CorrectionBlend;
+                }
+                else
+                {
+                    player.X = curX;
+                    player.Y = curY;
+                }
                 player.Facing = curFacing;
                 player.Walking = curWalking;
             }
@@ -242,4 +252,3 @@ public sealed class TeammateInterpolator
         }
     }
 }
-

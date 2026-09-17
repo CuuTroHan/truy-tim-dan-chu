@@ -34,7 +34,8 @@
 
     <div class="lobby-content">
         @{
-            var validation = ReadinessValidator.Validate(Room, _players, _teams.Select(t => t with { MemberCount = GetTeamMemberCount(t.TeamId) }).ToList());
+            // Admin quyết định thời điểm bắt đầu; người chơi không cần bấm "sẵn sàng".
+            var validation = ReadinessValidator.Validate(Room, _players, _teams.Select(t => t with { MemberCount = GetTeamMemberCount(t.TeamId) }).ToList(), requirePlayersReady: false);
             var localPlayer = GetMyPlayer();
             var canSelectAvatar = localPlayer is not null;
         }
@@ -331,7 +332,7 @@
                 }
             </div>
 
-            <!-- CỘT PHỤ (PHẢI): BẮT ĐẦU TRẬN, ĐIỀU KIỆN, SẴN SÀNG & DANH SÁCH NGƯỜI CHƠI -->
+            <!-- CỘT PHỤ (PHẢI): BẮT ĐẦU TRẬN, ĐIỀU KIỆN & DANH SÁCH NGƯỜI CHƠI -->
             <div class="lobby-sidebar-col">
                 @if (IsAdmin && validation.CanStart && Room?.Status == RoomStatus.Lobby)
                 {
@@ -339,7 +340,7 @@
                         <button class="primary-button start-match-btn" data-testid="admin-start-match"
                                 disabled="@_isActionSubmitting"
                                 @onclick="StartMatch">
-                            🚀 BẮT ĐẦU TRẬN ĐẤU (3S)
+                            🚀 BẮT ĐẦU TRẬN ĐẤU
                         </button>
                     </div>
                 }
@@ -364,23 +365,12 @@
                     </div>
                 }
 
-                <!-- Trạng thái Kiểm tra Sẵn sàng Thi đấu -->
-                @if (validation.CanStart)
-                {
-                    <div class="readiness-banner ready" role="status">
-                        <div class="banner-icon">✓</div>
-                        <div class="banner-body">
-                            <strong>Đủ điều kiện bắt đầu!</strong>
-                            <span>Tất cả thành viên trong các đội đã sẵn sàng thi đấu.</span>
-                        </div>
-                    </div>
-                }
-                else
+                @if (!validation.CanStart)
                 {
                     <div class="readiness-banner blocked" role="status">
                         <div class="banner-icon">⚠️</div>
                         <div class="banner-body">
-                            <strong>Chưa thể bắt đầu (@validation.BlockingReasons.Count điều kiện)</strong>
+                            <strong>Chưa đủ đội hình (@validation.BlockingReasons.Count điều kiện)</strong>
                             <ul class="banner-reasons">
                                 @foreach (var r in validation.BlockingReasons)
                                 {
@@ -404,37 +394,6 @@
                                 }
                             </ul>
                         </div>
-                    </div>
-                }
-
-                @if (!string.IsNullOrEmpty(_readyResetNotice))
-                {
-                    <div class="ready-reset-toast" role="status">
-                        <span>🔄 @_readyResetNotice</span>
-                        <button type="button" class="close-toast-btn" @onclick="() => _readyResetNotice = null">✕</button>
-                    </div>
-                }
-
-                @if (localPlayer is not null && !string.IsNullOrEmpty(localPlayer.TeamId))
-                {
-                    <div class="player-ready-bar">
-                        <div class="ready-bar-info">
-                            @if (localPlayer.IsReady)
-                            {
-                                <span class="ready-status-pill is-ready">● BẠN ĐÃ SẴN SÀNG</span>
-                                <small class="ready-status-desc">Nhấn để hủy sẵn sàng nếu cần đổi đội hoặc ngoại hình.</small>
-                            }
-                            else
-                            {
-                                <span class="ready-status-pill not-ready">○ BẠN CHƯA SẴN SÀNG</span>
-                                <small class="ready-status-desc">Bấm sẵn sàng khi bạn đã chọn xong đội và ngoại hình.</small>
-                            }
-                        </div>
-                        <button class="ready-toggle-btn @(localPlayer.IsReady ? "unready" : "ready")" data-testid="player-ready-toggle"
-                                disabled="@_isActionSubmitting"
-                                @onclick="ToggleMyReady">
-                            @(localPlayer.IsReady ? "✕ HỦY SẴN SÀNG" : "✓ TÔI SẴN SÀNG")
-                        </button>
                     </div>
                 }
 
@@ -489,9 +448,6 @@
                                                 <span class="player-team-pill unassigned">Chưa vào đội</span>
                                             }
                                         </div>
-                                        <span class="player-status @(p.IsReady ? "ready" : "waiting")">
-                                            @(p.IsReady ? "✓ Đã sẵn sàng" : "Chưa sẵn sàng")
-                                        </span>
                                     </div>
                                     @if (IsAdmin)
                                     {
@@ -531,7 +487,7 @@
                 else
                 {
                     <div class="player-lobby-notice">
-                        <p>✦ Hãy chọn một đội thi đấu, chọn ngoại hình và bấm <strong>TÔI SẴN SÀNG</strong> khi bạn sẵn sàng.</p>
+                        <p>✦ Hãy chọn một đội thi đấu và ngoại hình. Admin sẽ bắt đầu trận khi đội hình đã đủ.</p>
                     </div>
                 }
             </div>
@@ -1325,7 +1281,8 @@
         _teamActionError = null;
         try
         {
-            var res = await Connection.AdminStartMatchAsync(new AdminStartMatchRequest(Room.RoomId, AdminToken, 3));
+            // 0 giây = bắt đầu ngay, không chờ người chơi bấm sẵn sàng và không đếm ngược.
+            var res = await Connection.AdminStartMatchAsync(new AdminStartMatchRequest(Room.RoomId, AdminToken, 0));
             if (!res.Success)
             {
                 _teamActionError = res.ErrorCode switch

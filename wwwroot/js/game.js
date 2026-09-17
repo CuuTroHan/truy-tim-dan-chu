@@ -80,7 +80,9 @@ export function stop() {
 function resizeCanvas() {
   if (!canvasEl) return;
   const rect = canvasEl.getBoundingClientRect();
-  const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  // Giới hạn độ phân giải nội bộ của canvas để tránh phải vẽ hàng triệu pixel
+  // mỗi frame trên màn hình Retina/độ phân giải cao.
+  const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
   const width = Math.max(1, Math.round(rect.width * dpr));
   const height = Math.max(1, Math.round(rect.height * dpr));
   if (canvasEl.width !== width) canvasEl.width = width;

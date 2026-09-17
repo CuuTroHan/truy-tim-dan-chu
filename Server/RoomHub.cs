@@ -240,7 +240,7 @@ public sealed class RoomHub : Hub
     public async Task<AdminStartMatchResponse> AdminStartMatch(AdminStartMatchRequest request)
     {
         var response = _roomManager.AdminStartMatch(request, Context.ConnectionId);
-        if (response.Success && response.MatchId is not null && response.MatchStartTimeUtc is not null)
+        if (response.Success && request.CountdownSeconds > 0 && response.MatchId is not null && response.MatchStartTimeUtc is not null)
         {
             await Clients.Group($"room_{request.RoomId}").SendAsync("CountdownStarted",
                 new CountdownStartedEvent(response.MatchId, request.CountdownSeconds, response.MatchStartTimeUtc.Value));
@@ -728,5 +728,4 @@ public sealed class RoomHub : Hub
         return true;
     }
 }
-
 

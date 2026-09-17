@@ -12,7 +12,7 @@ public static class AvatarCatalog
     [
         new("quang", "Quang", "assets/pipoya/quang.png"),
         new("trong", "Trọng", "assets/pipoya/trong.png"),
-        new("kieu_anh", "Kiều Anh", "assets/pipoya/kieu_anh.png"),
+        new("kieu_anh", "Lan", "assets/pipoya/kieu_anh.png"),
         new("ninh", "Ninh", "assets/pipoya/ninh.png"),
         new("phuong", "Phương", "assets/pipoya/phuong.png"),
         new("dung", "Dũng", "assets/pipoya/dung.png"),
@@ -50,4 +50,3 @@ public static class AvatarCatalog
         return $"#{index + 1}";
     }
 }
-

@@ -868,19 +868,41 @@ public sealed class RoomInstance
             var players = _players.Values.Select(p => p.GetSnapshot()).ToList();
             var teams = GetTeamSnapshots();
             var roomSnapshot = GetSnapshot();
-            var validation = ReadinessValidator.Validate(roomSnapshot, players, teams);
+            // Countdown dương vẫn giữ chế độ cũ cho các client/API cũ.
+            // Nút bắt đầu mới gửi 0 giây: Admin là người quyết định và không cần Ready.
+            var validation = ReadinessValidator.Validate(
+                roomSnapshot,
+                players,
+                teams,
+                requirePlayersReady: countdownSeconds > 0);
             if (!validation.CanStart)
             {
                 return (false, RoomErrorCodes.NotReadyToStart, null, null);
             }
 
-            var delaySeconds = Math.Clamp(countdownSeconds, 1, 30);
             var now = UtcNowProvider();
             MatchId = Guid.NewGuid().ToString("N");
-            MatchStartTimeUtc = now.AddSeconds(delaySeconds);
-            Status = RoomStatus.Countdown;
+            MatchStartTimeUtc = now.AddSeconds(Math.Max(0, countdownSeconds));
             Version++;
             LastActivityAt = now;
+
+            if (countdownSeconds <= 0)
+            {
+                Status = RoomStatus.Playing;
+                Clock = new MatchClock(TimeSpan.FromSeconds(TimeLimitSeconds), TimeProvider);
+                Clock.Start(now);
+                MatchFinishedAtUtc = null;
+                MatchEndReason = null;
+                Results = null;
+                InitializeTeamGames(MatchId);
+                Version++;
+                OnMatchStarted?.Invoke(MatchId, now);
+                return (true, null, MatchId, now);
+            }
+
+            var delaySeconds = Math.Clamp(countdownSeconds, 1, 30);
+            MatchStartTimeUtc = now.AddSeconds(delaySeconds);
+            Status = RoomStatus.Countdown;
 
             var matchId = MatchId;
             var startTimeUtc = MatchStartTimeUtc.Value;

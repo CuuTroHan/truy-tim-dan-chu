@@ -266,7 +266,7 @@
     private static string PresenterTitle(Chapter chapter) => chapter switch { Chapter.Lights => "Ánh sáng", Chapter.Draft => "Xưởng dự thảo", Chapter.River => "Ven sông", Chapter.News => "Phố tin tức", _ => "Đoạn kết" };
     private string TextFactor() => _game.TextScale switch { 100 => "1", 150 => "1.5", _ => "1.25" };
     private static string Direction(int value) => value switch { 0 => "↑", 1 => "→", 2 => "↓", _ => "←" };
-    private static string PortraitClass(string speaker) => speaker switch { "Kiều Anh" => "kieu-anh", "Trọng" => "trong", "Phương" => "phuong", "Dũng" => "dung", "Bảo" => "bao", "Ninh" => "ninh", "Hán" => "han", "Nam" => "nam", _ => "quang" };
+    private static string PortraitClass(string speaker) => speaker switch { "Lan" => "kieu-anh", "Trọng" => "trong", "Phương" => "phuong", "Dũng" => "dung", "Bảo" => "bao", "Ninh" => "ninh", "Hán" => "han", "Nam" => "nam", _ => "quang" };
 
     [JSInvokable]
     public Frame Tick(double timestamp, int keys)

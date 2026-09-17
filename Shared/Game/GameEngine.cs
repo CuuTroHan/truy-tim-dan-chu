@@ -33,7 +33,7 @@ public sealed class GameEngine
     private readonly Dictionary<string, (float X, float Y, string Kind, string Label)> _places = new()
     {
         ["trong"] = (526, 300, "npc", "Trọng"),
-        ["kieu_anh"] = (464, 325, "npc", "Kiều Anh"),
+        ["kieu_anh"] = (464, 325, "npc", "Lan"),
         ["ninh"] = (359, 119, "npc", "Ninh"),
         ["phuong"] = (170, 280, "npc", "Phương"),
         ["dung"] = (205, 338, "npc", "Dũng"),
@@ -149,7 +149,7 @@ public sealed class GameEngine
         ShowDialogue(
         [
             new("Trọng", "Hòm Dân chủ trống không. Nhưng có lẽ từ đầu chúng ta đã tìm sai chỗ."),
-            new("Kiều Anh", "Quang, đừng tìm một món đồ. Hãy theo đường đi của tiếng nói."),
+            new("Lan", "Quang, đừng tìm một món đồ. Hãy theo đường đi của tiếng nói."),
             new("Quang", "Vậy mình sẽ hỏi những người đang sống ở thị trấn này.")
         ], () => SetChapter(Chapter.Lights));
     }
@@ -270,7 +270,7 @@ public sealed class GameEngine
         if (id == "kieu_anh")
         {
             ShowDialogue([
-                new("Kiều Anh", Chapter == Chapter.Lights ? "Bốn người ở quảng trường phía tây đều có một ngọn đèn. Hãy lắng nghe họ." : "Nhìn vào cuốn sổ: quyền, tham gia, giám sát và phản hồi phải nối thành một vòng.")
+                new("Lan", Chapter == Chapter.Lights ? "Bốn người ở quảng trường phía tây đều có một ngọn đèn. Hãy lắng nghe họ." : "Nhìn vào cuốn sổ: quyền, tham gia, giám sát và phản hồi phải nối thành một vòng.")
             ]);
             return;
         }
@@ -375,7 +375,7 @@ public sealed class GameEngine
         if (id == "kieu_anh")
         {
             ShowDialogue([
-                new("Kiều Anh", Chapter == Chapter.Lights ? "Bốn người ở quảng trường phía tây đều có một ngọn đèn. Hãy lắng nghe họ." : "Nhìn vào cuốn sổ: quyền, tham gia, giám sát và phản hồi phải nối thành một vòng.")
+                new("Lan", Chapter == Chapter.Lights ? "Bốn người ở quảng trường phía tây đều có một ngọn đèn. Hãy lắng nghe họ." : "Nhìn vào cuốn sổ: quyền, tham gia, giám sát và phản hồi phải nối thành một vòng.")
             ]);
             return;
         }
@@ -453,7 +453,7 @@ public sealed class GameEngine
 
     private IEnumerable<Actor> ActiveActors()
     {
-        var names = new[] { ("trong", "Trọng", "#deb783"), ("kieu_anh", "Kiều Anh", "#9fd1c4"),
+        var names = new[] { ("trong", "Trọng", "#deb783"), ("kieu_anh", "Lan", "#9fd1c4"),
             ("ninh", "Ninh", "#9eb2db"), ("phuong", "Phương", "#e6a7bb"), ("dung", "Dũng", "#d0a873"),
             ("bao", "Bảo", "#e9b569"), ("nam", "Nam", "#94cfaa"), ("han", "Hán", "#bdd0e7") };
         foreach (var (id, name, color) in names)
@@ -557,7 +557,7 @@ public sealed class GameEngine
             Panel = Panel.None;
             ShowDialogue([
                 new("Quang", "Không có một ngọn đèn nào tự thắp sáng cả quảng trường."),
-                new("Kiều Anh", "Quyền lực thuộc về Nhân dân. Hãy mang mảnh đầu tiên tới Xưởng Dự thảo.")
+                new("Lan", "Quyền lực thuộc về Nhân dân. Hãy mang mảnh đầu tiên tới Xưởng Dự thảo.")
             ], () => SetChapter(Chapter.Draft));
         }
         else { Toast = "Một vài tia sáng chưa chạm vào tâm."; UiDirty = true; }
@@ -663,7 +663,7 @@ public sealed class GameEngine
         ShowDialogue([
             new("Nam", "Tiếp nhận. Giải trình. Điều chỉnh hoặc xử lý. Và cuối cùng: trả kết quả."),
             new("Trọng", "Thứ chúng ta tìm không nằm trong chiếc hòm. Nó nằm trong cách tiếng nói đi tới người có trách nhiệm và câu trả lời quay về với người dân."),
-            new("Kiều Anh", "Quyền làm chủ cần được bảo đảm bằng pháp luật, dân chủ trực tiếp và đại diện, khả năng giám sát cùng trách nhiệm giải trình."),
+            new("Lan", "Quyền làm chủ cần được bảo đảm bằng pháp luật, dân chủ trực tiếp và đại diện, khả năng giám sát cùng trách nhiệm giải trình."),
             new("Quang", "Dân chủ thực chất không nằm ở việc một quốc gia giống mô hình nào, mà nằm ở việc tiếng nói của người dân có được lắng nghe, phản hồi và chuyển hóa thành hành động hay không.")
         ], () => OpenPanel(Panel.Sources));
     }

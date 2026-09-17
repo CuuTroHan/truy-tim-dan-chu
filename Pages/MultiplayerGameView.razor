@@ -770,7 +770,7 @@
                 _session.ResetMirrors();
                 _session.ShowDialogue([
                     new("Quang", "Không có một ngọn đèn nào tự thắp sáng cả quảng trường."),
-                    new("Kiều Anh", "Quyền lực thuộc về Nhân dân. Hãy mang mảnh đầu tiên tới Xưởng Dự thảo.")
+                    new("Lan", "Quyền lực thuộc về Nhân dân. Hãy mang mảnh đầu tiên tới Xưởng Dự thảo.")
                 ]);
                 RefreshDialogue();
             }
@@ -938,7 +938,7 @@
                 _session.ShowDialogue([
                     new("Hán", "Tiếp nhận không phải là dấu chấm hết. Mọi phản ánh đều phải có địa chỉ xử lý."),
                     new("Quang", "Mảnh ghép thứ tư: Giám sát và phản hồi."),
-                    new("Kiều Anh", "Đã đủ bốn mảnh. Giờ hãy mang chúng về Hòm Dân chủ ở trung tâm.")
+                    new("Lan", "Đã đủ bốn mảnh. Giờ hãy mang chúng về Hòm Dân chủ ở trung tâm.")
                 ]);
                 RefreshDialogue();
             }
@@ -1068,7 +1068,7 @@
                     _session.ShowDialogue([
                         new("Nam", "Tiếp nhận. Giải trình. Điều chỉnh hoặc xử lý. Và cuối cùng: trả kết quả."),
                         new("Trọng", "Thứ chúng ta tìm không nằm trong chiếc hòm. Nó nằm trong cách tiếng nói đi tới người có trách nhiệm và câu trả lời quay về với người dân."),
-                        new("Kiều Anh", "Quyền làm chủ cần được bảo đảm bằng pháp luật, dân chủ trực tiếp và đại diện, khả năng giám sát cùng trách nhiệm giải trình."),
+                        new("Lan", "Quyền làm chủ cần được bảo đảm bằng pháp luật, dân chủ trực tiếp và đại diện, khả năng giám sát cùng trách nhiệm giải trình."),
                         new("Quang", "Dân chủ thực chất không nằm ở việc một quốc gia giống mô hình nào, mà nằm ở việc tiếng nói của người dân có được lắng nghe, phản hồi và chuyển hóa thành hành động hay không.")
                     ]);
                     RefreshDialogue();
@@ -1253,7 +1253,7 @@
 
     private static string PortraitClass(string speaker) => speaker switch
     {
-        "Kiều Anh" => "kieu-anh",
+        "Lan" => "kieu-anh",
         "Trọng" => "trong",
         "Phương" => "phuong",
         "Dũng" => "dung",
@@ -1344,4 +1344,3 @@
         _ => "Đang chơi"
     };
 }
-

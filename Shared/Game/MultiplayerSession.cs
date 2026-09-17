@@ -344,7 +344,7 @@ public sealed class MultiplayerSession : IGameSession
             _engine.ShowDialogue(
             [
                 new("Trọng", "Hòm Dân chủ trống không. Nhưng có lẽ từ đầu chúng ta đã tìm sai chỗ."),
-                new("Kiều Anh", "Quang, đừng tìm một món đồ. Hãy theo đường đi của tiếng nói."),
+                new("Lan", "Quang, đừng tìm một món đồ. Hãy theo đường đi của tiếng nói."),
                 new("Quang", "Vậy mình sẽ hỏi những người đang sống ở thị trấn này.")
             ], () => PresenterJump(Chapter.Lights));
         }

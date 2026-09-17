@@ -53,3 +53,8 @@
 .resume-button { margin-top: 10px; padding: 12px 28px; font-size: 15px; font-weight: 800; border-radius: 8px; background: linear-gradient(135deg, #f7ce84, #e2ac4f); color: #142a33; border: 1px solid #ffe9b6; box-shadow: 0 4px 16px rgba(247,206,132,0.4); cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
 .resume-button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(247,206,132,0.6); }
 .pause-wait-notice { margin-top: 8px; font-size: 13px; color: #8da69d; font-style: italic; }
+/* Tutorial: chỉ số thứ tự trực tiếp mới là huy hiệu tròn. */
+.tutorial-steps > div { align-items: flex-start; }
+.tutorial-steps > div > b { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: #294e59; color: #ffe3a4; }
+.tutorial-steps > div > span { flex: 1; min-width: 0; }
+.tutorial-steps small b { display: inline; width: auto; height: auto; background: none; color: inherit; border-radius: 0; font: inherit; }

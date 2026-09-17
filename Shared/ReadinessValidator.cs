@@ -5,7 +5,8 @@ public static class ReadinessValidator
     public static StartMatchValidationResult Validate(
         RoomSnapshot? room,
         IReadOnlyList<PlayerSnapshot> players,
-        IReadOnlyList<TeamSnapshot> teams)
+        IReadOnlyList<TeamSnapshot> teams,
+        bool requirePlayersReady = true)
     {
         var blocking = new List<string>();
         var warnings = new List<string>();
@@ -42,7 +43,9 @@ public static class ReadinessValidator
             blocking.Add($"Còn {unassigned.Count} người chơi chưa được phân vào đội.");
         }
 
-        var notReady = players.Where(p => !string.IsNullOrEmpty(p.TeamId) && !p.IsReady).ToList();
+        var notReady = requirePlayersReady
+            ? players.Where(p => !string.IsNullOrEmpty(p.TeamId) && !p.IsReady).ToList()
+            : [];
         if (notReady.Count > 0)
         {
             blocking.Add($"Còn {notReady.Count} thành viên trong đội chưa sẵn sàng.");
@@ -69,4 +72,3 @@ public static class ReadinessValidator
         return new StartMatchValidationResult(blocking.Count == 0, blocking, warnings);
     }
 }
-

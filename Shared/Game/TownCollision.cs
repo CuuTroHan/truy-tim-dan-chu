@@ -17,7 +17,7 @@ public static class TownCollision
     public static readonly Dictionary<string, (float X, float Y, string Kind, string Label)> Places = new()
     {
         ["trong"] = (526, 300, "npc", "Trọng"),
-        ["kieu_anh"] = (464, 325, "npc", "Kiều Anh"),
+        ["kieu_anh"] = (464, 325, "npc", "Lan"),
         ["ninh"] = (359, 119, "npc", "Ninh"),
         ["phuong"] = (170, 280, "npc", "Phương"),
         ["dung"] = (205, 338, "npc", "Dũng"),
@@ -133,4 +133,3 @@ public static class TownCollision
         walking = 1;
     }
 }
-
