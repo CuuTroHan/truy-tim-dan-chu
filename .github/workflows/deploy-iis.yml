@@ -113,6 +113,21 @@ jobs:
           Set-ItemProperty "IIS:\Sites\TruyTimDanChu" -Name physicalPath -Value $targetDir
           Set-ItemProperty "IIS:\Sites\TruyTimDanChu" -Name applicationPool -Value "TruyTimDanChu"
 
+          # Dam bao port 80 duoc bind cho TruyTimDanChu de chay domain Cloudflare (truytimdanchu.site)
+          try {
+              $binding80 = Get-WebBinding -Name "TruyTimDanChu" -Port 80 -ErrorAction SilentlyContinue
+              if (-not $binding80) {
+                  Write-Host "Dang cau hinh binding port 80 cho site TruyTimDanChu de ket noi Cloudflare..." -ForegroundColor Cyan
+                  if (Get-Item "IIS:\Sites\Default Web Site" -ErrorAction SilentlyContinue) {
+                      Stop-WebSite -Name "Default Web Site" -ErrorAction SilentlyContinue
+                  }
+                  New-WebBinding -Name "TruyTimDanChu" -Port 80 -Protocol "http" -IPAddress "*"
+                  Write-Host "-> Da them binding port 80 cho TruyTimDanChu thanh cong!" -ForegroundColor Green
+              }
+          } catch {
+              Write-Host "Luu y khi bind port 80: $($_.Exception.Message)" -ForegroundColor Yellow
+          }
+
           # Dat file app_offline.htm va tam dung AppPool de IIS giai phong tai nguyen va lock DLL
           Write-Host "Tam dung ung dung IIS bang app_offline.htm va Stop-WebAppPool..." -ForegroundColor Yellow
           $offlineHtml = @"
