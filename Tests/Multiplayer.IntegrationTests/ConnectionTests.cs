@@ -106,7 +106,7 @@ public sealed class ConnectionTests
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
-        builder.Services.AddSignalR();
+        builder.Services.AddSignalR().AddMessagePackProtocol();
         await using var app = builder.Build();
         app.MapHub<IncompatibleHub>(ConnectionProtocol.HubPath);
         await app.StartAsync();

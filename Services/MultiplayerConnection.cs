@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 using TruyTimDanChu.Shared;
 
 namespace TruyTimDanChu.Services;
@@ -67,7 +68,20 @@ public sealed class MultiplayerConnection : IAsyncDisposable
             SetState(OnlineConnectionState.Connecting, "Đang kết nối máy chủ…");
             // Reconnect nghiệp vụ được điều khiển bởi Online.razor để có thể resume PlayerId/token;
             // không tự retry transport rồi vô tình gửi command của phiên cũ.
-            var hub = new HubConnectionBuilder().WithUrl(_hubUri).Build();
+            var hub = new HubConnectionBuilder()
+                .WithUrl(_hubUri, options =>
+                {
+                    options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets;
+                })
+                .AddMessagePackProtocol()
+                .WithAutomaticReconnect(new[]
+                {
+                    TimeSpan.Zero,
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromSeconds(5),
+                    TimeSpan.FromSeconds(10)
+                })
+                .Build();
             hub.ServerTimeout = TimeSpan.FromSeconds(30);
             hub.KeepAliveInterval = TimeSpan.FromSeconds(10);
             _hub = hub;

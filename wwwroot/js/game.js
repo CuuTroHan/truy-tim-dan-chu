@@ -47,7 +47,7 @@ export function start(ref, canvas) {
   ctx = canvas.getContext("2d", { alpha: false });
   ctx.imageSmoothingEnabled = false;
   portraitAtlas = new Image();
-  portraitAtlas.src = "./assets/characters-v2.png";
+  portraitAtlas.src = "./assets/characters-v2.webp";
   characterSheets = {};
   for (const id of ["quang", "trong", "kieu_anh", "ninh", "phuong", "dung", "bao", "han", "nam"]) {
     const sheet = new Image();

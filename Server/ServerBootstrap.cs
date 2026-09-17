@@ -49,7 +49,7 @@ public static class ServerBootstrap
             options.KeepAliveInterval = TimeSpan.FromSeconds(10);
             options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
             options.HandshakeTimeout = TimeSpan.FromSeconds(15);
-        });
+        }).AddMessagePackProtocol();
         var app = builder.Build();
         var roomManager = app.Services.GetRequiredService<RoomManager>();
         var matchStore = app.Services.GetRequiredService<IMatchStore>();

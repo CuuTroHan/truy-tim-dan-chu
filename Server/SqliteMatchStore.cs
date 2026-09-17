@@ -59,6 +59,9 @@ public sealed class SqliteMatchStore : IMatchStore
             using var connection = Open();
             using var command = connection.CreateCommand();
             command.CommandText = """
+                PRAGMA journal_mode = WAL;
+                PRAGMA synchronous = NORMAL;
+                PRAGMA busy_timeout = 5000;
                 PRAGMA foreign_keys = ON;
                 CREATE TABLE IF NOT EXISTS Rooms(
                     RoomId TEXT PRIMARY KEY, RoomCode TEXT NOT NULL UNIQUE, RoomName TEXT NOT NULL,
@@ -381,6 +384,9 @@ public sealed class SqliteMatchStore : IMatchStore
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;";
+        cmd.ExecuteNonQuery();
         return connection;
     }
 
