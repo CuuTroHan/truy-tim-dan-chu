@@ -127,6 +127,22 @@ jobs:
               Write-Host "Luu y khi bind port 80: $($_.Exception.Message)" -ForegroundColor Yellow
           }
 
+          # Bat cac tinh nang IIS (WebSockets, Compression) va toi uu AppPool cho 60+ nguoi choi
+          try {
+              Install-WindowsFeature -Name Web-WebSockets, Web-Http-Compression-Static, Web-Http-Compression-Dynamic -ErrorAction SilentlyContinue | Out-Null
+          } catch {}
+          try {
+              if (Test-Path "IIS:\AppPools\TruyTimDanChu") {
+                  Set-ItemProperty "IIS:\AppPools\TruyTimDanChu" -Name "queueLength" -Value 5000
+                  Set-ItemProperty "IIS:\AppPools\TruyTimDanChu" -Name "startMode" -Value "AlwaysRunning"
+                  Set-ItemProperty "IIS:\AppPools\TruyTimDanChu" -Name "processModel.idleTimeout" -Value ([TimeSpan]::Zero)
+                  Set-ItemProperty "IIS:\AppPools\TruyTimDanChu" -Name "recycling.periodicRestart.time" -Value ([TimeSpan]::Zero)
+                  Write-Host "-> Da toi uu cau hinh AppPool TruyTimDanChu (queueLength=5000, AlwaysRunning, idleTimeout=0)." -ForegroundColor Green
+              }
+          } catch {
+              Write-Host "Luu y khi cau hinh AppPool: $($_.Exception.Message)" -ForegroundColor Yellow
+          }
+
           # Dat file app_offline.htm va tam dung AppPool de IIS giai phong tai nguyen va lock DLL
           Write-Host "Tam dung ung dung IIS bang app_offline.htm va Stop-WebAppPool..." -ForegroundColor Yellow
           $offlineHtml = @"

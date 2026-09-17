@@ -68,8 +68,8 @@ public sealed class MultiplayerConnection : IAsyncDisposable
             // Reconnect nghiệp vụ được điều khiển bởi Online.razor để có thể resume PlayerId/token;
             // không tự retry transport rồi vô tình gửi command của phiên cũ.
             var hub = new HubConnectionBuilder().WithUrl(_hubUri).Build();
-            hub.ServerTimeout = TimeSpan.FromSeconds(12);
-            hub.KeepAliveInterval = TimeSpan.FromSeconds(3);
+            hub.ServerTimeout = TimeSpan.FromSeconds(30);
+            hub.KeepAliveInterval = TimeSpan.FromSeconds(10);
             _hub = hub;
             hub.Closed += OnClosedAsync;
             hub.Reconnected += _ => { Reconnected?.Invoke(); return Task.CompletedTask; };

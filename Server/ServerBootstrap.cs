@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Net.Http.Headers;
 using TruyTimDanChu.Game;
@@ -15,6 +16,16 @@ public static class ServerBootstrap
         {
             if (origins.Length > 0) policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
         }));
+        builder.Services.AddResponseCompression(options =>
+        {
+            options.EnableForHttps = true;
+            options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
+            {
+                "application/wasm",
+                "application/octet-stream",
+                "application/json"
+            });
+        });
         builder.Services.AddOptions<RoomServerOptions>()
             .Bind(builder.Configuration.GetSection("Multiplayer:Rooms"))
             .Validate(o => o.ReconnectGraceSeconds > 0 &&
@@ -34,9 +45,10 @@ public static class ServerBootstrap
         builder.Services.AddSignalR(options =>
         {
             options.EnableDetailedErrors = false;
-            options.MaximumReceiveMessageSize = 4096;
-            options.KeepAliveInterval = TimeSpan.FromSeconds(3);
-            options.ClientTimeoutInterval = TimeSpan.FromSeconds(12);
+            options.MaximumReceiveMessageSize = 64 * 1024;
+            options.KeepAliveInterval = TimeSpan.FromSeconds(10);
+            options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+            options.HandshakeTimeout = TimeSpan.FromSeconds(15);
         });
         var app = builder.Build();
         var roomManager = app.Services.GetRequiredService<RoomManager>();
@@ -79,11 +91,29 @@ public static class ServerBootstrap
             app.UseHttpsRedirection();
             app.UseHsts();
         }
+        app.UseResponseCompression();
         app.UseDefaultFiles();
         // Blazor WebAssembly ships ICU tables as fingerprinted .dat assets. The default
         // provider may regard that extension as unknown on a bare Kestrel host, which
         // leaves the runtime at its loading screen although index.html was served.
-        app.UseStaticFiles(new StaticFileOptions { ServeUnknownFileTypes = true });
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            ServeUnknownFileTypes = true,
+            OnPrepareResponse = ctx =>
+            {
+                var path = ctx.Context.Request.Path.Value ?? string.Empty;
+                if (path.StartsWith("/_framework") || path.StartsWith("/css") || path.StartsWith("/assets") || path.StartsWith("/img") || path.StartsWith("/audio"))
+                {
+                    ctx.Context.Response.Headers[HeaderNames.CacheControl] = "public, max-age=31536000, immutable";
+                }
+                else if (path.EndsWith("service-worker.js") ||
+                         path.EndsWith("service-worker-assets.js") ||
+                         path.EndsWith("index.html"))
+                {
+                    ctx.Context.Response.Headers[HeaderNames.CacheControl] = "no-cache, no-store, must-revalidate";
+                }
+            }
+        });
         app.UseCors("Client");
         // CORS alone does not restrict WebSocket origins. Non-browser clients may omit Origin.
         app.Use(async (context, next) =>
@@ -257,7 +287,13 @@ public static class ServerBootstrap
             });
         }
         app.MapHub<RoomHub>(ConnectionProtocol.HubPath);
-        app.MapFallbackToFile("index.html");
+        app.MapFallbackToFile("index.html", new StaticFileOptions
+        {
+            OnPrepareResponse = ctx =>
+            {
+                ctx.Context.Response.Headers[HeaderNames.CacheControl] = "no-cache, no-store, must-revalidate";
+            }
+        });
         return app;
     }
 

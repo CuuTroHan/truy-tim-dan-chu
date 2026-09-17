@@ -11,14 +11,15 @@ param (
 
 Write-Host "=== BAT DAU CAU HINH IIS CHO TRUY TIM DAN CHU ===" -ForegroundColor Cyan
 
-# 1. Kiem tra va bat module WebSockets tren IIS
-Write-Host "1. Kiem tra tinh nang WebSocket Protocol..." -ForegroundColor Yellow
+# 1. Kiem tra va bat module WebSockets va Compression tren IIS
+Write-Host "1. Kiem tra tinh nang IIS (WebSockets, Static & Dynamic Compression)..." -ForegroundColor Yellow
 try {
-    Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebSockets -All -NoRestart -ErrorAction SilentlyContinue
-    Write-Host "-> Da bat WebSocket Protocol thanh cong." -ForegroundColor Green
-} catch {
-    Write-Host "-> Chu y: Neu dang dung Windows Server, hay chay: Install-WindowsFeature Web-WebSockets" -ForegroundColor Gray
-}
+    Install-WindowsFeature -Name Web-WebSockets, Web-Http-Compression-Static, Web-Http-Compression-Dynamic -ErrorAction SilentlyContinue | Out-Null
+    Write-Host "-> Da bat cac tinh nang IIS (Windows Server) thanh cong." -ForegroundColor Green
+} catch {}
+try {
+    Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebSockets, IIS-HttpCompressionStatic, IIS-HttpCompressionDynamic -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+} catch {}
 
 # 2. Tao thu muc C:\inetpub\truy-tim-dan-chu
 Write-Host "2. Tao thu muc vat ly: $PhysicalPath..." -ForegroundColor Yellow
@@ -49,6 +50,13 @@ if (-not (Test-Path "IIS:\AppPools\$SiteName")) {
     Set-ItemProperty "IIS:\AppPools\$SiteName" -Name "managedRuntimeVersion" -Value ""
     Write-Host "-> AppPool '$SiteName' da ton tai, da dat ve 'No Managed Code'." -ForegroundColor Green
 }
+
+# Toi uu AppPool cho 60+ nguoi choi dong thoi:
+Set-ItemProperty "IIS:\AppPools\$SiteName" -Name "queueLength" -Value 5000
+Set-ItemProperty "IIS:\AppPools\$SiteName" -Name "startMode" -Value "AlwaysRunning"
+Set-ItemProperty "IIS:\AppPools\$SiteName" -Name "processModel.idleTimeout" -Value ([TimeSpan]::Zero)
+Set-ItemProperty "IIS:\AppPools\$SiteName" -Name "recycling.periodicRestart.time" -Value ([TimeSpan]::Zero)
+Write-Host "-> Da toi uu AppPool (queueLength=5000, startMode=AlwaysRunning, idleTimeout=0, periodicRestart=0)." -ForegroundColor Green
 
 # 6. Tao Website tren IIS
 Write-Host "5. Tao Website '$SiteName' tren Port $Port..." -ForegroundColor Yellow
